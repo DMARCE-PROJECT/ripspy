@@ -1,10 +1,9 @@
+import typing
+from typing import Dict, List
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-import typing
-from typing import List
-from typing import Dict
-
 
 # all missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
@@ -165,12 +164,14 @@ class RipsCore(Node):
     """Rips node."""
 
     __slots__ = [
-        '_context'
+        '_context',
     ]
+
+    __POLLING_TIME = 0.5  # secs
 
     def __init__(self):
         super().__init__('rips')
-        self.create_timer(0.5, self.timer_callback)
+        self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self.subscription = self.create_subscription(
             String,
             'ripsfake',

@@ -5,6 +5,12 @@ import typing
 from typing import List
 from typing import Dict
 
+
+# all missing asserts for isinstance are deleted because of
+# this error: Subscripted generics cannot be used with class 
+# and instance checks. For exameple, this one raises the error:
+# assert isinstance(pubs, List[rclpy.node.TopicEndpointInfo])
+
 class RipsTopic:
     """Data of interest for a topic"""
 
@@ -17,8 +23,6 @@ class RipsTopic:
 
     def __init__(self, name: str, params: List[str]):
         assert isinstance(name, str)
-        # Subscripted generics cannot be used with class and instance checks
-        # assert isinstance(param, List[str])
         self._name = name
         self._subscribers = []
         self._publishers = []
@@ -41,8 +45,6 @@ class RipsTopic:
         return self._parameters
  
     def update_parameters(self, params: List[str]):
-        # Subscripted generics cannot be used with class and instance checks
-        # assert isinstance(params, List[str])
         new = params.copy()
         new.sort()
         if new != self._parameters:
@@ -51,22 +53,18 @@ class RipsTopic:
         return False
 
     def update_pubs(self, pubs: List[rclpy.node.TopicEndpointInfo]) -> bool:
-        # Subscripted generics cannot be used with class and instance checks
-        # assert isinstance(pubs, List[rclpy.node.TopicEndpointInfo])
         new = []
-        for info in pubs:
-            new.append(info.node_name)
+        for elem in pubs:
+            new.append(elem.node_name)
         new.sort()
         if new != self._publishers:
             self._publishers = new
         return False
 
     def update_subs(self, subs: List[rclpy.node.TopicEndpointInfo]) -> bool:
-        # Subscripted generics cannot be used with class and instance checks
-        # assert isinstance(subs, List[rclpy.node.TopicEndpointInfo])
         new = []
-        for info in subs:
-            new.append(info.node_name)
+        for elem in subs:
+            new.append(elem.node_name)
         new.sort()
         if new != self._subscribers:
             self._subscribers = new
@@ -74,12 +72,12 @@ class RipsTopic:
 
     def __str__(self) -> str:
         s = self._name + "\n"
-        for p in self._parameters:
-            s = s + "   parameter: " + p + "\n"
-        for p in self._publishers:
-            s = s + "   publisher: " + p + "\n"
-        for s in self._subscribers:
-            s = s + "   subscriber: " + s + "\n"    
+        for elem in self._parameters:
+            s = s + "   parameter: " + elem + "\n"
+        for elem in self._publishers:
+            s = s + "   publisher: " + elem + "\n"
+        for elem in self._subscribers:
+            s = s + "   subscriber: " + elem + "\n"    
         return s
 
 class RipsContext:
@@ -105,8 +103,6 @@ class RipsContext:
         return self._nodes;
 
     def update_nodes(self, nodes: List[str]):
-        # Subscripted generics cannot be used with class and instance checks
-        # assert isinstance(nodes, List[str])
         new = nodes.copy()
         new.sort() 
         current = list(self._nodes.keys())
@@ -118,28 +114,25 @@ class RipsContext:
             changed = True
 
     def update_gids(self, l: List[rclpy.node.TopicEndpointInfo]):
-        for info in l:
-            n = info.node_name
-            g = '.'.join(format(x, '02x') for x in info.endpoint_gid)
+        for elem in l:
+            n = elem.node_name
+            g = '.'.join(format(x, '02x') for x in elem.endpoint_gid)
             if n in self._nodes:
                 if not g in self._nodes[n]:
                     self._nodes[n].append(g)
                     self._changed = True
-             
+    
+    ## topics are never deleted, because RIPS will be subscribed 
+    ## forever.
     def update_topic(self, name: str, 
                     params: List[str],
                     pubs: List[rclpy.node.TopicEndpointInfo],
                     subs: List[rclpy.node.TopicEndpointInfo]):
         assert isinstance(name, str)
-        # Subscripted generics cannot be used with class and instance checks
-        # assert isinstance(params, Any) # it does not work with List[str])
-        # assert isinstance(pubs, List[rclpy.node.TopicEndpointInfo])
-        # assert isinstance(subs, List[rclpy.node.TopicEndpointInfo])
         t = None
-        print(" >>>>>> name " + name)
-        for item in self._topics:
-            if item.name == name:
-                t = item
+        for elem in self._topics:
+            if elem.name == name:
+                t = elem
         if not t:
             t = RipsTopic(name, params)
             self._topics.append(t)
@@ -152,13 +145,14 @@ class RipsContext:
             self._changed = True
 
     def __str__(self) -> str:
-        s = ""
+        s = "NODES:\n"
         for k, v in self._nodes.items():
-            s = s + "node: " + k + "\n" 
+            s = s + k + "\n" 
             for g in v:
                     s = s + "   gid: " + g + "\n"
-        for t in self._topics:
-            s = s + "topic: " + str(t) 
+        s = s + "TOPICS:\n"
+        for elem in self._topics:
+            s = s + str(elem) 
         return s
 
     def check_and_clear(self) -> bool:
@@ -195,15 +189,17 @@ class RipsCore(Node):
     def timer_callback(self):
         self._context.update_nodes(self.get_node_names())
         topics = self.get_topic_names_and_types()
-        for topic in topics:
-            pubs = self.get_publishers_info_by_topic(topic[0])
-            subs = self.get_subscriptions_info_by_topic(topic[0])
-            self._context.update_topic(topic[0], topic[1], pubs, subs)
+        for elem in topics:
+            pubs = self.get_publishers_info_by_topic(elem[0])
+            subs = self.get_subscriptions_info_by_topic(elem[0])
+            self._context.update_topic(elem[0], elem[1], pubs, subs)
             self._context.update_gids(pubs)
             self._context.update_gids(subs)
         if self._context.check_and_clear():
-            self.get_logger().info("changes:\n%s\n" % self._context)
-                    
+            m = "\n-------------------\n%s" % self._context
+            m = m + "-------------------\n"
+            self.get_logger().info(m)
+
         
 def main(args=None):
     rclpy.init(args=args)

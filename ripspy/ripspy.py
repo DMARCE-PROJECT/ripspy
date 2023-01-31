@@ -1,17 +1,12 @@
-import inspect
-
+import sys
 import typing
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
-
-from rosidl_runtime_py.utilities import get_message
-
-import sys
-
 from rclpy.qos_event import SubscriptionEventCallbacks
+from rosidl_runtime_py.utilities import get_message
+from std_msgs.msg import String
 
 # all missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
@@ -91,6 +86,82 @@ class RipsTopic:
             s = f"{s}   subscriber: {elem}\n"    
         return s
 
+class RipsNode:
+    """Rips node abstraction"""
+
+    __slots__ = [
+        '_name',
+        '_services',
+        '_gids'
+    ]
+
+    def __init__(self, name: str):
+        assert isinstance(name, str)
+        self._name = name
+        self._gids = []
+        self._services = {} 
+
+    def add_gid(self, gid: str) -> bool :
+        assert isinstance(gid, str)
+        if gid in self._gids:
+            return False
+        self._gids.append(gid)
+        return True
+
+    def _update_service(self, name: str, l: List[str]) -> bool :
+        new = l.copy()
+        new.sort()
+        if not name in self._services.keys():
+            self._services[name] = new;
+            return True
+        if new != self._services[name]:
+            self._services[name] = new
+            return True
+        return False
+
+    def update_services(self, l: List[Tuple[str, List[str]]]) -> bool :
+        ret = False
+        for elem in l:
+            if self._update_service(elem[0], elem[1]):
+                ret = True
+        return ret
+
+    @property
+    def gids(self) -> List[str] :
+        return self._gids
+
+    @property
+    def name(self) -> str:
+        return self._name;
+
+    def __eq__(self, other) -> bool :
+        return self._name == other._name
+
+    def __ne__(self, other) -> bool :
+        return self._name != other._name
+    
+    def __gt__(self, other) -> bool :
+        return self._name > other._name
+
+    def __lt__(self, other) -> bool :
+        return self._name < other._name
+
+    def __ge__(self, other) -> bool :
+        return self._name >= other._name
+
+    def __le__(self, other) -> bool :
+        return self._name <= other._name
+
+    def __str__(self) -> str:
+        s = f"{self._name}\n"
+        for elem in self._gids:
+            s = f"{s}   gid: {elem}\n"
+        for k, v in self._services.items():
+            s = f"{s}   service: {k}\n"
+            for param in v:
+                s = f"{s}       param:{param}\n"
+        return s
+
 class RipsContext:
     """Rips context abstraction"""
 
@@ -102,7 +173,7 @@ class RipsContext:
 
     def __init__(self):
         self._topics = []
-        self._nodes = {} 
+        self._nodes = []
         self._changed = False
     
     @property
@@ -110,29 +181,44 @@ class RipsContext:
         return self._topics;
 
     @property
-    def nodes(self) -> Dict[str, List[str]]:
+    def nodes(self) -> List[RipsNode]:
         return self._nodes;
 
+    def get_node(self, name: str) -> RipsNode:
+        assert isinstance(name, str)
+        for elem in self._nodes:
+           if elem.name == name:
+                return elem
+        return None
+          
     def update_nodes(self, nodes: List[str]):
         new = nodes.copy()
         new.sort() 
-        current = list(self._nodes.keys())
+        current = []
+        for elem in self._nodes:
+            current.append(elem.name)
         current.sort()
         if new != current:
-            self._nodes = {}
+            self._nodes = []
             for n in new:
-                self._nodes[n] = []
+                self._nodes.append(RipsNode(n))
             changed = True
 
     def update_gids(self, l: List[rclpy.node.TopicEndpointInfo]):
         for elem in l:
-            n = elem.node_name
-            g = '.'.join(format(x, '02x') for x in elem.endpoint_gid)
-            if n in self._nodes:
-                if not g in self._nodes[n]:
-                    self._nodes[n].append(g)
+            n = self.get_node(elem.node_name)
+            if n:
+                g = '.'.join(format(x, '02x') for x in elem.endpoint_gid)
+                if n.add_gid(g):
                     self._changed = True
-    
+  
+    def update_services(self, node: str, l: List[Tuple[str, List[str]]]):
+        n = self.get_node(node)
+        if not n:
+            return
+        if n.update_services(l):
+            self._changed = True
+
     ## topics are never deleted, because RIPS will be subscribed 
     ## forever.
     def update_topic(self, name: str, 
@@ -157,10 +243,8 @@ class RipsContext:
 
     def __str__(self) -> str:
         s = "NODES:\n"
-        for k, v in self._nodes.items():
-            s = f"{s}{k}\n" 
-            for g in v:
-                    s = f"{s}   gid: {g}\n"
+        for elem in self._nodes:
+            s = f"{s}{elem}"
         s = f"{s}TOPICS:\n"
         for elem in self._topics:
             s = f"{s}{str(elem)}" 
@@ -201,10 +285,6 @@ class RipsCore(Node):
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
 
-    @property
-    def context(self):
-        return self._context;
-
     def topic_callback(self, msg):
         datatype = msg.get_fields_and_field_types()['data']
         dataclass = msg.__class__
@@ -218,7 +298,6 @@ class RipsCore(Node):
         # for elem in l:
         #     print(elem)
         #     print("\n")
-##        sys.exit(0)
 
     def _subscribe(self, topic: str): 
         assert isinstance(topic, str)
@@ -232,13 +311,14 @@ class RipsCore(Node):
             topic,
             self.topic_callback,
             100, ## history depth (queue)
-            event_callbacks=eventcb) 
-
-    def event_callback(self, x):
-        print('event callback')
+        ) 
 
     def timer_callback(self):
-        self._context.update_nodes(self.get_node_names())
+        nodes = self.get_node_names()
+        self._context.update_nodes(nodes)
+        for elem in nodes:
+            services = self.get_service_names_and_types_by_node(elem, "/")
+            self._context.update_services(elem, services)
         topics = self.get_topic_names_and_types()
         for elem in topics:
             pubs = self.get_publishers_info_by_topic(elem[0])

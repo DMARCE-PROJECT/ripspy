@@ -1,9 +1,17 @@
+import inspect
+
 import typing
 from typing import Dict, List
 
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+
+from rosidl_runtime_py.utilities import get_message
+
+import sys
+
+from rclpy.qos_event import SubscriptionEventCallbacks
 
 # all missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
@@ -69,14 +77,18 @@ class RipsTopic:
             self._subscribers = new
         return False
 
+    def is_subscribed(self, node: str) -> bool:
+        assert isinstance(node, str)
+        return node in self._subscribers
+
     def __str__(self) -> str:
         s = self._name + "\n"
         for elem in self._parameters:
-            s = s + "   parameter: " + elem + "\n"
+            s = f"{s}   parameter: {elem}\n"
         for elem in self._publishers:
-            s = s + "   publisher: " + elem + "\n"
+            s = f"{s}   publisher: {elem}\n"
         for elem in self._subscribers:
-            s = s + "   subscriber: " + elem + "\n"    
+            s = f"{s}   subscriber: {elem}\n"    
         return s
 
 class RipsContext:
@@ -146,19 +158,33 @@ class RipsContext:
     def __str__(self) -> str:
         s = "NODES:\n"
         for k, v in self._nodes.items():
-            s = s + k + "\n" 
+            s = f"{s}{k}\n" 
             for g in v:
-                    s = s + "   gid: " + g + "\n"
-        s = s + "TOPICS:\n"
+                    s = f"{s}   gid: {g}\n"
+        s = f"{s}TOPICS:\n"
         for elem in self._topics:
-            s = s + str(elem) 
+            s = f"{s}{str(elem)}" 
         return s
+
+    def is_subscribed(self, node: str, topic: str) -> bool:
+        assert isinstance(node, str)
+        assert isinstance(topic, str)
+        for elem in self._topics:
+            if elem.name == topic:
+                return elem.is_subscribed(node)
+        return False
 
     def check_and_clear(self) -> bool:
         ret = self._changed
         self._changed = False
         return ret
 
+    def params_of(self, topic: str) -> List[str]:
+        assert isinstance(topic, str)
+        for elem in self._topics:
+            if topic == elem.name:
+                return elem.parameters
+        return None
 
 class RipsCore(Node):
     """Rips node."""
@@ -167,25 +193,49 @@ class RipsCore(Node):
         '_context',
     ]
 
+    __IGNORED_TOPICS = ["/rosout"]
     __POLLING_TIME = 0.5  # secs
 
     def __init__(self):
         super().__init__('rips')
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
-        self.subscription = self.create_subscription(
-            String,
-            'ripsfake',
-            self.listener_callback,
-            10)
-        self.subscription  # prevent unused variable warning
         self._context = RipsContext()
 
     @property
     def context(self):
         return self._context;
 
-    def listener_callback(self, msg):
-        self.get_logger().info('I heard: "%s"' % msg.data)
+    def topic_callback(self, msg):
+        datatype = msg.get_fields_and_field_types()['data']
+        dataclass = msg.__class__
+        s = (
+            f"RIPS: RECEIVED MESSAGE:\n"
+            f"  type:{datatype}\n"
+            f"  class:{dataclass}\n"
+        )
+        self.get_logger().info(s)
+        # l = inspect.getmembers(msg)
+        # for elem in l:
+        #     print(elem)
+        #     print("\n")
+##        sys.exit(0)
+
+    def _subscribe(self, topic: str): 
+        assert isinstance(topic, str)
+        if topic in self.__IGNORED_TOPICS:
+            return 
+        self.get_logger().info(f"subscribing to topic {topic}")
+        msgtype = get_message(self._context.params_of(topic)[0]) ## what if there are more than 1 parameter
+        eventcb=SubscriptionEventCallbacks(liveliness=lambda event: print(f'MGS EVENT: {event}'))
+        subscription = self.create_subscription(
+            msgtype,
+            topic,
+            self.topic_callback,
+            100, ## history depth (queue)
+            event_callbacks=eventcb) 
+
+    def event_callback(self, x):
+        print('event callback')
 
     def timer_callback(self):
         self._context.update_nodes(self.get_node_names())
@@ -196,9 +246,13 @@ class RipsCore(Node):
             self._context.update_topic(elem[0], elem[1], pubs, subs)
             self._context.update_gids(pubs)
             self._context.update_gids(subs)
+            if not self._context.is_subscribed("rips", elem[0]):
+                self._subscribe(elem[0])
         if self._context.check_and_clear():
-            m = "\n-------------------\n%s" % self._context
-            m = m + "-------------------\n"
+            m = (
+                f"\n-------------------\n{self._context}"
+                f"-------------------\n"
+            )
             self.get_logger().info(m)
 
         

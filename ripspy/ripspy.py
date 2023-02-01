@@ -285,31 +285,28 @@ class RipsCore(Node):
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
 
-    def topic_callback(self, msg):
-        datatype = msg.get_fields_and_field_types()['data']
-        dataclass = msg.__class__
-        s = (
-            f"RIPS: RECEIVED MESSAGE:\n"
-            f"  type:{datatype}\n"
-            f"  class:{dataclass}\n"
-        )
-        self.get_logger().info(s)
-        # l = inspect.getmembers(msg)
-        # for elem in l:
-        #     print(elem)
-        #     print("\n")
-
     def _subscribe(self, topic: str): 
         assert isinstance(topic, str)
         if topic in self.__IGNORED_TOPICS:
             return 
         self.get_logger().info(f"subscribing to topic {topic}")
         msgtype = get_message(self._context.params_of(topic)[0]) ## what if there are more than 1 parameter
-        eventcb=SubscriptionEventCallbacks(liveliness=lambda event: print(f'MGS EVENT: {event}'))
+        def f(msg): 
+            datatype = msg.get_fields_and_field_types()['data']
+            dataclass = msg.__class__
+            s = (
+                f"RECEIVED:\n"
+                f"  topic {topic}\n"
+                f"  type:{datatype}\n"
+                f"  class:{dataclass}\n"
+            )
+            self.get_logger().info(s)
+
         subscription = self.create_subscription(
             msgtype,
             topic,
-            self.topic_callback,
+            f,
+            #self.topic_callback,
             100, ## history depth (queue)
         ) 
 

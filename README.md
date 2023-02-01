@@ -116,14 +116,23 @@ ones (i.e., nodes, nodeinclude, and nodecount), but they are oriented to topics,
 services, topic’s subscribers, and topic’s publishers:
 
 • topics(n:set of string)
+
 • topicsinclude(n:set of string)
+
 • topiccount(min:int, max:int)
+
 • subscribers(topic:string, nodes:set of string)
+
 • subscribersinclude(topic:string, nodes:set of string)
+
 • subscribercount(topic:string, min:int, max:int)
+
 • publishers(topic:string, nodes:set of string)
+
 • publishersinclude(topic:string, nodes:set of string)
+
 • publishercount(topic:string, min:int, max:int)
+
 
 ## Subexpressions for external events
 

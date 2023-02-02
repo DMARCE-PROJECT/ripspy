@@ -8,6 +8,8 @@ from rclpy.qos_event import SubscriptionEventCallbacks
 from rosidl_runtime_py.utilities import get_message
 from std_msgs.msg import String
 
+from rosidl_runtime_py import message_to_yaml
+
 # all missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
 # and instance checks. For exameple, this one raises the error:
@@ -279,35 +281,45 @@ class RipsCore(Node):
 
     __IGNORED_TOPICS = ["/rosout"]
     __POLLING_TIME = 0.5  # secs
+    __QUEUE_DEPTH = 100 
 
     def __init__(self):
         super().__init__('rips')
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
 
+    def _send_to_engine(self, m: str):
+        assert isinstance(m, str)
+        print("<<<<<<< sending yaml to the engine >>>>>>>>")
+        print(m)
+        print("<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>")
+
     def _subscribe(self, topic: str): 
         assert isinstance(topic, str)
         if topic in self.__IGNORED_TOPICS:
             return 
         self.get_logger().info(f"subscribing to topic {topic}")
-        msgtype = get_message(self._context.params_of(topic)[0]) ## what if there are more than 1 parameter
+        params = self._context.params_of(topic)
+        if len(params) != 1:
+            self.get_logger().warning(f"Topic {topic} has more than one type\n")
+            return 
+        msgtype = get_message(params[0]) 
         def f(msg): 
-            datatype = msg.get_fields_and_field_types()['data']
-            dataclass = msg.__class__
             s = (
-                f"RECEIVED:\n"
-                f"  topic {topic}\n"
-                f"  type:{datatype}\n"
-                f"  class:{dataclass}\n"
+                f"---\n"
+                f"topic: {topic}\n"
+                f"{message_to_yaml(msg)}"
+                f"...\n"
             )
-            self.get_logger().info(s)
+            self._send_to_engine(s);
+            self.get_logger().info("Received from topic {topic}")
 
         subscription = self.create_subscription(
             msgtype,
             topic,
             f,
-            #self.topic_callback,
-            100, ## history depth (queue)
+            self.__QUEUE_DEPTH,
+            raw=False
         ) 
 
     def timer_callback(self):
@@ -326,12 +338,8 @@ class RipsCore(Node):
             if not self._context.is_subscribed("rips", elem[0]):
                 self._subscribe(elem[0])
         if self._context.check_and_clear():
-            m = (
-                f"\n-------------------\n{self._context}"
-                f"-------------------\n"
-            )
-            self.get_logger().info(m)
-
+            self._send_to_engine(str(self._context))
+            self.get_logger().info("Context changed}")
         
 def main(args=None):
     rclpy.init(args=args)

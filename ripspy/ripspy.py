@@ -1,4 +1,5 @@
-import sys
+import os
+
 import typing
 from typing import Dict, List, Tuple
 
@@ -78,15 +79,26 @@ class RipsTopic:
         assert isinstance(node, str)
         return node in self._subscribers
 
-    def __str__(self) -> str:
-        s = self._name + "\n"
+    def to_yaml(self) -> str:
+        s = (
+            f"    - topic: {self._name}\n"
+        )
+        s = f"{s}      parameters:\n"
         for elem in self._parameters:
-            s = f"{s}   parameter: {elem}\n"
-        for elem in self._publishers:
-            s = f"{s}   publisher: {elem}\n"
-        for elem in self._subscribers:
-            s = f"{s}   subscriber: {elem}\n"    
-        return s
+            s = f"{s}        - {elem}\n"
+        s = f"{s}      publishers:\n"
+        if len(self._publishers) == 0:
+            s = f"{s}        - ~\n"
+        else:
+            for elem in self._publishers:
+                s = f"{s}        - {elem}\n"
+        s = f"{s}      subscribers:\n"
+        if len(self._subscribers) == 0:
+            s = f"{s}        - ~\n"
+        else:
+            for elem in self._subscribers:
+                s = f"{s}        - {elem}\n"    
+        return s   
 
 class RipsNode:
     """Rips node abstraction"""
@@ -154,15 +166,19 @@ class RipsNode:
     def __le__(self, other) -> bool :
         return self._name <= other._name
 
-    def __str__(self) -> str:
-        s = f"{self._name}\n"
+    def to_yaml(self) -> str:
+        s = f"    - node: {self._name}\n"
+        s = f"{s}      gids:\n"
         for elem in self._gids:
-            s = f"{s}   gid: {elem}\n"
+            s = f"{s}        - {elem}\n"
+        s = f"{s}      services:\n"
         for k, v in self._services.items():
-            s = f"{s}   service: {k}\n"
+            s = f"{s}        - service: {k}\n"
+            s = f"{s}          params:\n"
             for param in v:
-                s = f"{s}       param:{param}\n"
+                s = f"{s}            - {param}\n"
         return s
+
 
 class RipsContext:
     """Rips context abstraction"""
@@ -243,15 +259,6 @@ class RipsContext:
         if t.update_subs(subs):
             self._changed = True
 
-    def __str__(self) -> str:
-        s = "NODES:\n"
-        for elem in self._nodes:
-            s = f"{s}{elem}"
-        s = f"{s}TOPICS:\n"
-        for elem in self._topics:
-            s = f"{s}{str(elem)}" 
-        return s
-
     def is_subscribed(self, node: str, topic: str) -> bool:
         assert isinstance(node, str)
         assert isinstance(topic, str)
@@ -272,27 +279,72 @@ class RipsContext:
                 return elem.parameters
         return None
 
+    def to_yaml(self) -> str:
+        s = (
+            f"context:\n"
+            f"  nodes:\n"
+        )
+        for elem in self._nodes:
+            s = f"{s}{elem.to_yaml()}"
+        s = f"{s}  topics:\n"
+        for elem in self._topics:
+            s = f"{s}{elem.to_yaml()}" 
+        return s
+
+
 class RipsCore(Node):
     """Rips node."""
 
     __slots__ = [
         '_context',
+        '_fifo'
     ]
 
     __IGNORED_TOPICS = ["/rosout"]
     __POLLING_TIME = 0.5  # secs
     __QUEUE_DEPTH = 100 
+    __DEFAULT_FIFO_PATH = "/tmp/rips.fifo"
 
     def __init__(self):
         super().__init__('rips')
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
+        path = os.environ.get('RIPSFIFOPATH', self.__DEFAULT_FIFO_PATH)
+        try:
+            self._fifo = os.open(path, os.O_WRONLY)
+        except FileNotFoundError:
+            os.mkfifo(path, 0o600)
+        self._fifo = os.open(path, os.O_WRONLY)
+        self.get_logger().info(f"fifo {path} ready, fd: {self._fifo}")
 
     def _send_to_engine(self, m: str):
         assert isinstance(m, str)
-        print("<<<<<<< sending yaml to the engine >>>>>>>>")
-        print(m)
-        print("<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>")
+        try:
+            os.write(self._fifo, m.encode(encoding = 'UTF-8'))
+        except:
+            self.get_logger().warning(f"can't write event to the fifo")
+
+    def _send_graph_event(self):
+        s = (
+                f"---\n"
+                f"event: graph\n"
+                f"{self._context.to_yaml()}"
+                f"...\n"
+        )
+        self._send_to_engine(s)
+
+    def _send_msg_event(self, topic: str, msg: str):
+        assert isinstance(topic, str)
+        assert isinstance(msg, str)
+        s = (
+                f"---\n"
+                f"event: message\n"
+                f"fromtopic: {topic}\n"
+                f"{msg}"
+                f"{self._context.to_yaml()}"
+                f"...\n"
+        )
+        self._send_to_engine(s)
 
     def _subscribe(self, topic: str): 
         assert isinstance(topic, str)
@@ -305,15 +357,8 @@ class RipsCore(Node):
             return 
         msgtype = get_message(params[0]) 
         def f(msg): 
-            s = (
-                f"---\n"
-                f"topic: {topic}\n"
-                f"{message_to_yaml(msg)}"
-                f"...\n"
-            )
-            self._send_to_engine(s);
-            self.get_logger().info("Received from topic {topic}")
-
+            self._send_msg_event(topic, message_to_yaml(msg));
+            self.get_logger().info(f"Received from topic {topic}")
         subscription = self.create_subscription(
             msgtype,
             topic,
@@ -338,7 +383,7 @@ class RipsCore(Node):
             if not self._context.is_subscribed("rips", elem[0]):
                 self._subscribe(elem[0])
         if self._context.check_and_clear():
-            self._send_to_engine(str(self._context))
+            self._send_graph_event()
             self.get_logger().info("Context changed}")
         
 def main(args=None):

@@ -1,20 +1,15 @@
-import os
-
 import base64
-
-import typing
+import os
 from typing import Dict, List, Tuple
 
 import rclpy
 from rclpy.node import Node
+from rclpy.serialization import deserialize_message
+from rosidl_runtime_py import message_to_yaml
 from rosidl_runtime_py.utilities import get_message
 from std_msgs.msg import String
 
-from rosidl_runtime_py import message_to_yaml
-
 from ripspy.ripscontext.ripscontext import RipsContext
-
-from rclpy.serialization import deserialize_message
 
 # All missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
@@ -33,6 +28,9 @@ class RipsCore(Node):
     __POLLING_TIME = 0.5  # secs
     __QUEUE_DEPTH = 100 
     __DEFAULT_FIFO_PATH = "/tmp/rips.fifo"
+
+    _context: RipsContext
+    _fifo: int
 
     def __init__(self):
         super().__init__('rips')
@@ -67,8 +65,8 @@ class RipsCore(Node):
         assert isinstance(topic, str)
         assert isinstance(msg, str)
         assert isinstance(raw, bytes)
-        # bug, with message_to_yaml, long String messages 
-        # will generate lines too long for YAML (max. line is 80)
+        # possible bug: with message_to_yaml, long String messages 
+        # may generate lines too long for YAML (max. line is 80)
         msg = "  ".join(msg.splitlines(True)) 
         rawmsg = base64.encodebytes(raw).decode()
         rawmsg = "  ".join(rawmsg.splitlines(True))
@@ -90,16 +88,20 @@ class RipsCore(Node):
         if topic in self.__IGNORED_TOPICS:
             return 
         self.get_logger().info(f"subscribing to topic {topic}")
-        params = self._context.params_of(topic)
+        try:
+            params = self._context.params_of(topic)
+        except:
+            self.get_logger().warning(f"can't subscribe to topic {topic}: no such topic")
+            return
         if len(params) != 1:
-            self.get_logger().warning(f"Topic {topic} has more than one type\n")
+            self.get_logger().warning(f"Topic {topic} has more than one type")
             return 
         msgtype = get_message(params[0]) 
         def f(binmsg):
             ## we want both the serialized (binary) msg and the python message
             pymsg = deserialize_message(binmsg, msgtype)
             self._send_msg_event(topic, message_to_yaml(pymsg), binmsg);
-            self.get_logger().info(f"Received from topic {topic}")
+            #self.get_logger().info(f"Received from topic {topic}")
         subscription = self.create_subscription(
             msgtype,
             topic,
@@ -126,7 +128,7 @@ class RipsCore(Node):
         if self._context.check_and_clear():
             self._send_graph_event()
             self.get_logger().info("Context changed")
-        
+
 def main(args=None):
     rclpy.init(args=args)
     rips_core = RipsCore()

@@ -2,22 +2,29 @@
 
 Python RIPS monitor prototype. 
 
+# Build
+
+```
+cd ..
+colcon build --packages-select ripspy --symlink-install
+```
+
+# Testing and linting
+
+```
+cd ..
+colcon test --packages-select ripspy --python-testing pytest
+cat log/latest/ripspy/stdout_stderr.log 
+```
+
 # Status
 
+RIPS should be used only with strict ROS2 security enabled. It doesn't
+make sense to run it if nodes can be impersonated.
+
+RIPS is active on domain 0.
+
 ## Subexpressions for message events
-
-### Not covered
-
-• senderin(senders:set of string): The parameter is an array of strings with
-the names of participants (nodes). The function returns true if any of the par-
-ticipants of the set is the sender of the message. Note that a participant may be
-a publisher for the corresponding topic and not be the sender of this message.
-
-• secure(): This function returns true if the message is secured by ROS2 security
-mechanisms (authentication, confidentiality, access control, etc.).
-
-• domain(d:int): This function returns true if the DDS domain is the specified
-in the parameter.
 
 ### Covered 
 

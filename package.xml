@@ -7,10 +7,16 @@
   <maintainer email="esoriano@gsyc.urjc.es">esoriano</maintainer>
   <license>TODO: License declaration</license>
 
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_mypy</buildtool_depend>
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
+  <exec_depend>python3-mypy</exec_depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
+  <exec_depend>python3-typing-extensions</exec_depend>
+  <exec_depend>rclpy</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

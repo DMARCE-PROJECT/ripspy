@@ -1,7 +1,7 @@
-import typing
 from typing import Dict, List, Tuple
 
 import rclpy
+
 
 class RipsTopic:
     """Data of interest for a topic"""
@@ -12,6 +12,11 @@ class RipsTopic:
         '_subscribers',
         '_publishers'
     ]
+
+    _name: str
+    _subscribers: List[str]
+    _publishers: List[str]
+    _parameters: List[str]
 
     def __init__(self, name: str, params: List[str]):
         assert isinstance(name, str)
@@ -96,6 +101,9 @@ class RipsNode:
         '_gids'
     ]
 
+    _gids: List[str]
+    _services: Dict[str, List[str]] 
+
     def __init__(self, name: str):
         assert isinstance(name, str)
         self._name = name
@@ -135,24 +143,6 @@ class RipsNode:
     def name(self) -> str:
         return self._name;
 
-    def __eq__(self, other) -> bool :
-        return self._name == other._name
-
-    def __ne__(self, other) -> bool :
-        return self._name != other._name
-    
-    def __gt__(self, other) -> bool :
-        return self._name > other._name
-
-    def __lt__(self, other) -> bool :
-        return self._name < other._name
-
-    def __ge__(self, other) -> bool :
-        return self._name >= other._name
-
-    def __le__(self, other) -> bool :
-        return self._name <= other._name
-
     def to_yaml(self) -> str:
         s = f"    - node: {self._name}\n"
         s = f"{s}      gids:\n"
@@ -176,6 +166,10 @@ class RipsContext:
         '_changed'
     ]
 
+    _topics: List[RipsTopic]
+    _nodes: List[RipsNode]
+    _changed: bool
+
     def __init__(self):
         self._topics = []
         self._nodes = []
@@ -194,7 +188,7 @@ class RipsContext:
         for elem in self._nodes:
            if elem.name == name:
                 return elem
-        return None
+        raise Exception("no such node") 
           
     def update_nodes(self, nodes: List[str]):
         new = nodes.copy()
@@ -211,18 +205,21 @@ class RipsContext:
 
     def update_gids(self, l: List[rclpy.node.TopicEndpointInfo]):
         for elem in l:
-            n = self.get_node(elem.node_name)
-            if n:
+            try:
+                n = self.get_node(elem.node_name)
                 g = '.'.join(format(x, '02x') for x in elem.endpoint_gid)
                 if n.add_gid(g):
                     self._changed = True
-  
+            except:
+                pass
+                  
     def update_services(self, node: str, l: List[Tuple[str, List[str]]]):
-        n = self.get_node(node)
-        if not n:
+        try:
+            n = self.get_node(node)
+            if n.update_services(l):
+                self._changed = True
+        except:
             return
-        if n.update_services(l):
-            self._changed = True
 
     ## topics are never deleted, because RIPS will be subscribed 
     ## forever.
@@ -264,16 +261,16 @@ class RipsContext:
         for elem in self._topics:
             if topic == elem.name:
                 return elem.parameters
-        return None
+        raise Exception("No such topic") 
 
     def to_yaml(self) -> str:
         s = (
             f"context:\n"
             f"  nodes:\n"
         )
-        for elem in self._nodes:
-            s = f"{s}{elem.to_yaml()}"
+        for n in self._nodes:
+            s = f"{s}{n.to_yaml()}"
         s = f"{s}  topics:\n"
-        for elem in self._topics:
-            s = f"{s}{elem.to_yaml()}" 
+        for t in self._topics:
+            s = f"{s}{t.to_yaml()}" 
         return s

@@ -11,6 +11,8 @@ from std_msgs.msg import String
 
 from ripspy.ripscontext.ripscontext import RipsContext
 
+import subprocess
+
 # All missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
 # and instance checks. For exameple, this one raises the error:
@@ -44,6 +46,7 @@ class RipsCore(Node):
             os.mkfifo(path, 0o600)
         self._fifo = os.open(path, os.O_WRONLY)
         self.get_logger().info(f"fifo {path} ready, fd: {self._fifo}")
+        subprocess.run(["pwd"])
 
     def _send_to_engine(self, m: str):
         assert isinstance(m, str)

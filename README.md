@@ -5,24 +5,30 @@ Python RIPS monitor prototype.
 # Build
 
 ```
-cd ..
+cd .. # go to the workspace root
 colcon build --packages-select ripspy --symlink-install
 ```
 
 # Testing and linting
 
 ```
-cd ..
+cd .. # go to the workspace root
 colcon test --packages-select ripspy --python-testing pytest
+```
+
+If there are errors:
+
+```
+cd ..  # go to the workspace root
 cat log/latest/ripspy/stdout_stderr.log 
 ```
 
 # Status
 
-RIPS should be used only with strict ROS2 security enabled. It doesn't
-make sense to run it if nodes can be impersonated.
+RIPS should be used only with strict ROS2 security enabled. 
+It doesn't make sense to run it if nodes can be impersonated.
 
-RIPS is active on domain 0.
+RIPS always runs on domain 0.
 
 ## Subexpressions for message events
 

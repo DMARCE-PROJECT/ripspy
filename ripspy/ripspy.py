@@ -11,7 +11,9 @@ from std_msgs.msg import String
 
 from ripspy.ripscontext.ripscontext import RipsContext
 
-import subprocess
+from subprocess import Popen
+
+from time import sleep
 
 # All missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
@@ -23,7 +25,8 @@ class RipsCore(Node):
 
     __slots__ = [
         '_context',
-        '_fifo'
+        '_fifo',
+        '_goprocess',
     ]
 
     __IGNORED_TOPICS = ["/rosout"]
@@ -33,20 +36,30 @@ class RipsCore(Node):
 
     _context: RipsContext
     _fifo: int
+    _goprocess: Popen
 
+    def _create_go_process(self):
+        fifopath = os.environ.get('RIPSFIFOPATH', self.__DEFAULT_FIFO_PATH)
+        if not os.access(fifopath, os.W_OK):
+            self.get_logger().info(f"creating fifo...")
+            os.mkfifo(fifopath, 0o600)
+        self._process = Popen(["/home/esoriano/dmarce/go_ws/rips/rips/rips", \
+            "/home/esoriano/dmarce/go_ws/rips/parser/examples/predefvars.rul", \
+            fifopath])  ## HARDCODED FOR NOW
+        sleep(2) 
+        if self._process.poll() != None:
+            self.get_logger().error(f"go process not ready, aborting")
+            os._exit(1)
+        self.get_logger().info(f"opening fifo {fifopath}")    
+        self._fifo = os.open(fifopath, os.O_WRONLY)
+        self.get_logger().info(f"ready!!!")
+
+    ## TODO pass the rule file as argv[1]
     def __init__(self):
         super().__init__('rips')
+        self._create_go_process()
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
-        path = os.environ.get('RIPSFIFOPATH', self.__DEFAULT_FIFO_PATH)
-        try:
-            self.get_logger().info(f"opening fifo...")
-            self._fifo = os.open(path, os.O_WRONLY)
-        except FileNotFoundError:
-            os.mkfifo(path, 0o600)
-        self._fifo = os.open(path, os.O_WRONLY)
-        self.get_logger().info(f"fifo {path} ready, fd: {self._fifo}")
-        subprocess.run(["pwd"])
 
     def _send_to_engine(self, m: str):
         assert isinstance(m, str)

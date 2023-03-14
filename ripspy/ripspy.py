@@ -15,6 +15,12 @@ from ripspy.ripscontext.ripscontext import RipsContext
 from subprocess import Popen
 
 from time import sleep
+from threading import Thread
+import queue
+
+import yaml
+import socket
+import sys
 
 # All missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
@@ -26,50 +32,30 @@ class RipsCore(Node):
 
     __slots__ = [
         '_context',
-        '_fifo',
-        '_goprocess',
+        '_socket',
     ]
 
     __IGNORED_TOPICS = ["/rosout"]
     __POLLING_TIME = 0.5  # secs
     __QUEUE_DEPTH = 100 
-    __DEFAULT_FIFO_PATH = "/tmp/rips.fifo"
 
     _context: RipsContext
-    _fifo: int
-    _goprocess: Popen
-
-    def _create_go_process(self):
-        fifopath = os.environ.get('RIPSFIFO', self.__DEFAULT_FIFO_PATH)
-        rulespath = os.environ.get('RIPSRULES', '')
-        if rulespath == '':
-            self.get_logger().error(f"RIPSRULES environment variable not defined")
-            os._exit(1)  
-        sharepath = get_package_share_directory('ripspy')
-        if not os.access(fifopath, os.W_OK):
-            self.get_logger().info(f"creating fifo...")
-            os.mkfifo(fifopath, 0o600)
-        self._process = Popen([sharepath+'/bin/rips', rulespath, fifopath])
-        sleep(2) 
-        if self._process.poll() != None:
-            self.get_logger().error(f"go process not ready, aborting")
-            os._exit(1)
-        self.get_logger().info(f"opening fifo {fifopath}")    
-        self._fifo = os.open(fifopath, os.O_WRONLY)
-        self.get_logger().info(f"rips is ready")
-
-    def __init__(self):
+    _socket: socket.socket
+    _queue: queue.Queue
+ 
+    def __init__(self, sock: socket.socket, q: queue.Queue):
         super().__init__('rips')
-        self._create_go_process()
+        self._socket = sock
+        self._queue = q
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
 
     def _send_to_engine(self, m: str):
         assert isinstance(m, str)
         try:
-            os.write(self._fifo, m.encode(encoding = 'UTF-8'))
+            self._socket.sendall(m.encode(encoding = 'UTF-8'))
         except:
-            self.get_logger().warning(f"can't write event to the fifo")
+            self.get_logger().warning(f"can't send event to the fifo")
 
     def _send_graph_event(self):
         s = (
@@ -148,9 +134,71 @@ class RipsCore(Node):
             self._send_graph_event()
             self.get_logger().info("Context changed")
 
+        while not self._queue.empty():
+            d = self._queue.get()
+            assert isinstance(d, dict)
+            if "level" in d:
+                level = d.get("level")
+                self.get_logger.info(f"NEW LEVEL: {level}")
+            elif "alert" in d:
+                alert = d.get("alert")
+                self.get_logger.info(f"RIPS ALERT: {alert}")
+            else:
+                self.get_logger.err("BAD DICT IN QUEUE")
+
+
+AQUI
+
+
+def from_engine_thread(sock: socket.socket, q: queue.Queue):
+    f = os.fdopen(socket.fileno())
+start=False
+yamfile = ""
+for line in f:
+    print(line)
+    if "---" == line:
+        start = True
+    if start:
+        yamfile = f"{yamfile}\n{line}\n"
+    if "..." == line:
+        start = False
+        print(yamfile)
+        yamfile = ""
+       
+        d = yaml.safe_load(yamfile)
+        print()
+        q.put(d)
+
 def main(args=None):
     rclpy.init(args=args)
-    rips_core = RipsCore()
+    logger = rclpy.logging.get_logger("rips")
+    sockpath = os.environ.get('RIPSSOCKET', "/tmp/rips.socket")
+    rulespath = os.environ.get('RIPSRULES', '')
+    scriptspath = os.environ.get('RIPSSCRIPTS', '')
+    if rulespath == '':
+        logger.err("RIPSRULES environment variable not defined")
+        os._exit(1)  
+    sharepath = get_package_share_directory('ripspy')
+    proc = Popen([sharepath+'/bin/rips', rulespath, sockpath, scriptspath])
+    sleep(2) 
+    if proc.poll() != None:
+        logger.err("go process not ready, aborting")
+        os._exit(1)
+    logger.info(f"connecting to unix socket {sockpath}")   
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(sockpath)
+    except:
+        logger.err("can't connect to socket, aborting")  
+        proc.kill()
+        os.exit(1)
+    logger.info("connected, creating thread")
+    q = queue.Queue()
+    sockthread = Thread(target=from_engine_thread, args=[sock, q])
+    sockthread.start()
+    logger.info("RIPS core is ready")
+
+    rips_core = RipsCore(sock, q)
     rclpy.spin(rips_core)
 
     # Destroy the node explicitly

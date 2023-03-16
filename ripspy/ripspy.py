@@ -1,9 +1,14 @@
-from ament_index_python.packages import get_package_share_directory
 import base64
 import os
+import queue
+import socket
+from subprocess import Popen
+from threading import Thread
+from time import sleep
 from typing import Dict, List, Tuple
-
 import rclpy
+import yaml
+from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py import message_to_yaml
@@ -11,16 +16,6 @@ from rosidl_runtime_py.utilities import get_message
 from std_msgs.msg import String
 
 from ripspy.ripscontext.ripscontext import RipsContext
-
-from subprocess import Popen
-
-from time import sleep
-from threading import Thread
-import queue
-
-import yaml
-import socket
-import sys
 
 # All missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
@@ -33,11 +28,13 @@ class RipsCore(Node):
     __slots__ = [
         '_context',
         '_socket',
+        '_queue',
     ]
 
     __IGNORED_TOPICS = ["/rosout"]
     __POLLING_TIME = 0.5  # secs
     __QUEUE_DEPTH = 100 
+    __LEVEL_PARAM_NAME = "systemmode"
 
     _context: RipsContext
     _socket: socket.socket
@@ -49,6 +46,14 @@ class RipsCore(Node):
         self._queue = q
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
+        self.declare_parameter(self.__LEVEL_PARAM_NAME, "__DEFAULT__")
+
+    def _set_level(self, l: str):
+        p = self.get_parameter(self.__LEVEL_PARAM_NAME)
+        if p.get_parameter_value != l:
+            type = rclpy.Parameter.Type.STRING
+            param = rclpy.Parameter(self.__LEVEL_PARAM_NAME, type, l)
+            self.set_parameters([param])
 
     def _send_to_engine(self, m: str):
         assert isinstance(m, str)
@@ -133,41 +138,32 @@ class RipsCore(Node):
         if self._context.check_and_clear():
             self._send_graph_event()
             self.get_logger().info("Context changed")
-
         while not self._queue.empty():
             d = self._queue.get()
             assert isinstance(d, dict)
             if "level" in d:
                 level = d.get("level")
-                self.get_logger.info(f"NEW LEVEL: {level}")
+                self.get_logger().info(f"NEW LEVEL: {level}")
+                self._set_level(level)
             elif "alert" in d:
                 alert = d.get("alert")
-                self.get_logger.info(f"RIPS ALERT: {alert}")
+                self.get_logger().info(f"RIPS ALERT: {alert}")
             else:
-                self.get_logger.err("BAD DICT IN QUEUE")
-
-
-AQUI
-
+                self.get_logger().err("BAD DICT IN QUEUE")
 
 def from_engine_thread(sock: socket.socket, q: queue.Queue):
-    f = os.fdopen(socket.fileno())
-start=False
-yamfile = ""
-for line in f:
-    print(line)
-    if "---" == line:
-        start = True
-    if start:
-        yamfile = f"{yamfile}\n{line}\n"
-    if "..." == line:
-        start = False
-        print(yamfile)
-        yamfile = ""
-       
-        d = yaml.safe_load(yamfile)
-        print()
-        q.put(d)
+    f = os.fdopen(sock.fileno())
+    start = False
+    for line in f:
+        if start:
+            s = s + f"{line}"
+        if line == "---\n":
+            start = True
+            s = "---\n"
+        if line == "...\n":
+            start = False
+            d = yaml.safe_load(s)
+            q.put(d)
 
 def main(args=None):
     rclpy.init(args=args)
@@ -197,16 +193,12 @@ def main(args=None):
     sockthread = Thread(target=from_engine_thread, args=[sock, q])
     sockthread.start()
     logger.info("RIPS core is ready")
-
     rips_core = RipsCore(sock, q)
     rclpy.spin(rips_core)
-
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
+    proc.kill()
+    sockthread.join()
     rips_core.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

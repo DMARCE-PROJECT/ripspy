@@ -28,7 +28,8 @@ class RipsCore(Node):
     __slots__ = [
         '_context',
         '_socket',
-        '_queue',
+        '_dashsocket',
+        '_ripscoreq',
     ]
 
     __IGNORED_TOPICS = ["/rosout"]
@@ -38,12 +39,14 @@ class RipsCore(Node):
 
     _context: RipsContext
     _socket: socket.socket
-    _queue: queue.Queue
+    _dashsocket: socket.socket
+    _ripscoreq: queue.Queue
  
-    def __init__(self, sock: socket.socket, q: queue.Queue):
+    def __init__(self, sock: socket.socket, dashsock: socket.socket, coreq: queue.Queue):
         super().__init__('rips')
         self._socket = sock
-        self._queue = q
+        self._dashsocket = dashsock
+        self._ripscoreq = coreq
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
         self.declare_parameter(self.__LEVEL_PARAM_NAME, "__DEFAULT__")
@@ -55,13 +58,18 @@ class RipsCore(Node):
             param = rclpy.Parameter(self.__LEVEL_PARAM_NAME, type, l)
             self.set_parameters([param])
 
-    def _send_to_engine(self, m: str):
+    def _send_data(self, m: str):
         assert isinstance(m, str)
         try:
             self._socket.sendall(m.encode(encoding = 'UTF-8'))
         except:
-            self.get_logger().warning(f"can't send event to the fifo")
-
+            self.get_logger().warning(f"can't send event to rips")
+        if self._dashsocket != None:
+            try:
+                self._dashsocket.sendall(m.encode(encoding = 'UTF-8'))
+            except:
+                self.get_logger().warning(f"can't send event to ripspydash")
+               
     def _send_graph_event(self):
         s = (
                 f"---\n"
@@ -69,7 +77,7 @@ class RipsCore(Node):
                 f"{self._context.to_yaml()}"
                 f"...\n\n"
         )
-        self._send_to_engine(s)
+        self._send_data(s)
 
     def _send_msg_event(self, topic: str, msg: str, raw: bytes):
         assert isinstance(topic, str)
@@ -91,7 +99,7 @@ class RipsCore(Node):
                 f"{self._context.to_yaml()}"
                 f"...\n\n"
         )
-        self._send_to_engine(s)
+        self._send_data(s)
 
     def _subscribe(self, topic: str): 
         assert isinstance(topic, str)
@@ -138,8 +146,8 @@ class RipsCore(Node):
         if self._context.check_and_clear():
             self._send_graph_event()
             self.get_logger().info("Context changed")
-        while not self._queue.empty():
-            d = self._queue.get()
+        while not self._ripscoreq.empty():
+            d = self._ripscoreq.get()
             assert isinstance(d, dict)
             if "level" in d:
                 level = d.get("level")
@@ -188,12 +196,26 @@ def main(args=None):
         logger.err("can't connect to socket, aborting")  
         proc.kill()
         os.exit(1)
-    logger.info("connected, creating thread")
-    q = queue.Queue()
-    sockthread = Thread(target=from_engine_thread, args=[sock, q])
+
+    logger.info("connected, creating ripscore thread")
+    ripsq = queue.Queue()
+    sockthread = Thread(target=from_engine_thread, args=[sock, ripsq])
     sockthread.start()
+
+    dashsockpath = os.environ.get('RIPSDASHSOCKET', "")
+    dashsock = None
+    if dashsockpath != "":
+        try:
+            dashsock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            dashsock.connect(dashsockpath)
+        except:
+                logger.err("can't connect to dash socket, aborting")  
+                proc.kill()
+                os.exit(1)
+
+    rips_core = RipsCore(sock, dashsock, ripsq)
     logger.info("RIPS core is ready")
-    rips_core = RipsCore(sock, q)
+
     rclpy.spin(rips_core)
     proc.kill()
     sockthread.join()

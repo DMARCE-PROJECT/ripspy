@@ -28,7 +28,7 @@ class RipsCore(Node):
     __slots__ = [
         '_context',
         '_socket',
-        '_dashsocket',
+        '_teesocket',
         '_ripscoreq',
     ]
 
@@ -39,13 +39,13 @@ class RipsCore(Node):
 
     _context: RipsContext
     _socket: socket.socket
-    _dashsocket: socket.socket
+    _teesocket: socket.socket
     _ripscoreq: queue.Queue
  
-    def __init__(self, sock: socket.socket, dashsock: socket.socket, coreq: queue.Queue):
+    def __init__(self, sock: socket.socket, teesock: socket.socket, coreq: queue.Queue):
         super().__init__('rips')
         self._socket = sock
-        self._dashsocket = dashsock
+        self._teesocket = teesock
         self._ripscoreq = coreq
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
@@ -64,9 +64,9 @@ class RipsCore(Node):
             self._socket.sendall(m.encode(encoding = 'UTF-8'))
         except:
             self.get_logger().warning(f"can't send event to rips")
-        if self._dashsocket != None:
+        if self._teesocket != None:
             try:
-                self._dashsocket.sendall(m.encode(encoding = 'UTF-8'))
+                self._teesocket.sendall(m.encode(encoding = 'UTF-8'))
             except:
                 self.get_logger().warning(f"can't send event to ripspydash")
                
@@ -202,12 +202,12 @@ def main(args=None):
     sockthread = Thread(target=from_engine_thread, args=[sock, ripsq])
     sockthread.start()
 
-    dashsockpath = os.environ.get('RIPSDASHSOCKET', "")
+    teesockpath = os.environ.get('RIPSTEESOCKET', "")
     dashsock = None
-    if dashsockpath != "":
+    if teesockpath != "":
         try:
             dashsock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            dashsock.connect(dashsockpath)
+            dashsock.connect(teesockpath)
         except:
                 logger.err("can't connect to dash socket, aborting")  
                 proc.kill()

@@ -1,0 +1,49 @@
+levels:
+
+	__DEFAULT__;
+	ALERT soft;
+	COMPROMISED;
+	HALT;
+
+consts:
+	
+	MaxNodes int = 5; # rips and 4 participants
+
+vars:
+
+rules Graph:
+
+	! nodecount(1, MaxNodes) && CurrLevel == __DEFAULT__ ?
+		trigger(ALERT);
+
+	nodecount(1, MaxNodes) && CurrLevel == ALERT ?
+		alert("Bad node count"), trigger(__DEFAULT__);
+
+	# should be: rips, monitor & recorder
+	! topicsubscribercount("/videocorridor", 0, 3) ?
+		alert("videocorridor: too many subscribers"), 
+		trigger(COMPROMISED); 
+
+	# should be: corridorcamera
+	! topicpublishercount("/videocorridor", 0, 1) ?
+		alert("videocorridor: too many publishers"),
+		trigger(COMPROMISED);
+
+	# should be: rips & recorder
+	! topicsubscribercount("/videooffice", 0, 2) ?
+		alert("videooffice: too many subscribers"),
+		trigger(COMPROMISED); 
+
+	# should be: officecamera
+	! topicpublishercount("/videooffice", 0, 1) ?
+		alert("videooffice: too many publishers"),
+		trigger(COMPROMISED);
+
+rules Msg:
+
+	topicmatches("/videocorridor") && ! publishers("corridorcamera") ?
+		alert("unauthorized publisher in corridorcamera"),
+		exec("/usr/bin/spd-say", "red code the system is totally compromised, halting the system"),
+		trigger(HALT);
+
+

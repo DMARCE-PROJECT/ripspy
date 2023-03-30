@@ -1,0 +1,50 @@
+levels:
+
+	__DEFAULT__;
+	ALERT soft;
+	COMPROMISED;
+	HALT;
+
+consts:
+	
+	MaxNodes int = 5; # rips and 4 participants
+  topic1 string = "/videocorridor";
+  topic2 string = "/videooffice";
+
+vars:
+
+rules Graph:
+
+	# should be: rips, monitor & recorder
+	! topicsubscribercount(topic1, 0, 3) ?
+		alert("videocorridor: too many subscribers in topic " + topic1), 
+		trigger(COMPROMISED); 
+
+	# should be: corridorcamera
+	! topicpublishercount(topic1, 0, 1) ?
+		alert("videocorridor: too many publishers in topic " + topic1),
+		trigger(COMPROMISED);
+
+	# should be: rips & recorder
+	! topicsubscribercount(topic2, 0, 2) ?
+		alert("videooffice: too many subscribers in topic " + topic2),
+		trigger(COMPROMISED); 
+
+	# should be: officecamera
+	! topicpublishercount(topic2, 0, 1) ?
+		alert("videooffice: too many publishers in topic " + topic2),
+		trigger(COMPROMISED);
+
+  # to avoid error
+  false ?
+    trigger(ALERT);
+
+rules External:
+
+  signal("SIGUSR1") ?
+    alert("external signal USR1"),
+		exec("/usr/bin/spd-say", "signal USR1 received, halting the system"),
+		exec("/bin/sleep", "5"),
+		trigger(HALT);
+
+

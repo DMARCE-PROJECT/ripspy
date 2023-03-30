@@ -11,13 +11,21 @@ consts:
 
 vars:
 
+	descalated int = 0;
+
 rules Graph:
 
 	! nodecount(1, MaxNodes) && CurrLevel == __DEFAULT__ ?
 		trigger(ALERT);
 
 	nodecount(1, MaxNodes) && CurrLevel == ALERT ?
-		alert("Bad node count"), trigger(__DEFAULT__);
+		set(descalated, descalated+1),
+		trigger(__DEFAULT__);
+
+	descalated > 5 && (CurrLevel == ALERT || CurrLevel == __DEFAULT__)?
+		alert("too many transitions to alert"),
+		exec("/usr/bin/spd-say", "too many transitions to alert"),
+		trigger(COMPROMISED);
 
 	# should be: rips, monitor & recorder
 	! topicsubscribercount("/videocorridor", 0, 3) ?
@@ -41,9 +49,10 @@ rules Graph:
 
 rules Msg:
 
-	topicmatches("/videocorridor") && ! publishers("corridorcamera") ?
+	topicmatches("/videocorridor") && ! publishers("corridorcamera") && CurrLevel != HALT ?
 		alert("unauthorized publisher in corridorcamera"),
 		exec("/usr/bin/spd-say", "red code the system is totally compromised, halting the system"),
+		exec("/bin/sleep", "5"),
 		trigger(HALT);
 
 

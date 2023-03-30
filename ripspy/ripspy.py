@@ -16,6 +16,7 @@ from rosidl_runtime_py.utilities import get_message
 from std_msgs.msg import String
 
 from ripspy.ripscontext.ripscontext import RipsContext
+import sys
 
 # All missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class 
@@ -118,6 +119,7 @@ class RipsCore(Node):
         def f(binmsg):
             ## we want both the serialized (binary) msg and the python message
             pymsg = deserialize_message(binmsg, msgtype)
+            self._update_context()
             self._send_msg_event(topic, message_to_yaml(pymsg), binmsg);
             #self.get_logger().info(f"Received from topic {topic}")
         subscription = self.create_subscription(
@@ -129,6 +131,21 @@ class RipsCore(Node):
         ) 
 
     def timer_callback(self):
+        self._update_context()
+        while not self._ripscoreq.empty():
+            d = self._ripscoreq.get()
+            assert isinstance(d, dict)
+            if "level" in d:
+                level = d.get("level")
+                self.get_logger().info(f"NEW LEVEL: {level}")
+                self._set_level(level)
+            elif "alert" in d:
+                alert = d.get("alert")
+                self.get_logger().info(f"RIPS ALERT: {alert}")
+            else:
+                self.get_logger().err("BAD DICT IN QUEUE")
+
+    def _update_context(self):
         nodes = self.get_node_names()
         self._context.update_nodes(nodes)
         for elem in nodes:
@@ -146,22 +163,11 @@ class RipsCore(Node):
         if self._context.check_and_clear():
             self._send_graph_event()
             self.get_logger().info("Context changed")
-        while not self._ripscoreq.empty():
-            d = self._ripscoreq.get()
-            assert isinstance(d, dict)
-            if "level" in d:
-                level = d.get("level")
-                self.get_logger().info(f"NEW LEVEL: {level}")
-                self._set_level(level)
-            elif "alert" in d:
-                alert = d.get("alert")
-                self.get_logger().info(f"RIPS ALERT: {alert}")
-            else:
-                self.get_logger().err("BAD DICT IN QUEUE")
-
+        
 def from_engine_thread(sock: socket.socket, q: queue.Queue):
     f = os.fdopen(sock.fileno())
     start = False
+    s = ""
     for line in f:
         if start:
             s = s + f"{line}"
@@ -170,8 +176,11 @@ def from_engine_thread(sock: socket.socket, q: queue.Queue):
             s = "---\n"
         if line == "...\n":
             start = False
-            d = yaml.safe_load(s)
-            q.put(d)
+            try:
+                d = yaml.safe_load(s)
+                q.put(d)
+            except:
+                print(f"ERROR: sockthread: bad YAML\n{s}\n", file=sys.stderr)
 
 def main(args=None):
     rclpy.init(args=args)

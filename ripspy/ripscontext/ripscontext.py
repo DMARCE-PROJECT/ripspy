@@ -146,14 +146,20 @@ class RipsNode:
     def to_yaml(self) -> str:
         s = f"    - node: {self._name}\n"
         s = f"{s}      gids:\n"
-        for elem in self._gids:
-            s = f"{s}        - {elem}\n"
+        if len(self._gids) == 0:
+            s = f"{s}        - ~\n"
+        else:
+            for elem in self._gids:
+                s = f"{s}        - {elem}\n"
         s = f"{s}      services:\n"
-        for k, v in self._services.items():
-            s = f"{s}        - service: {k}\n"
-            s = f"{s}          params:\n"
-            for param in v:
-                s = f"{s}            - {param}\n"
+        if len(self._services) == 0:
+            s = f"{s}        - ~\n"
+        else:   
+            for k, v in self._services.items():
+                s = f"{s}        - service: {k}\n"
+                s = f"{s}          params:\n"
+                for param in v:
+                    s = f"{s}            - {param}\n"
         return s
 
 

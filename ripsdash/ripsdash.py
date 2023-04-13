@@ -22,29 +22,59 @@ MaxMsgs = 20
 TheConsole = None
 
 class Header:
-    """Display header with clock."""
+    """Ripspy Dash Header"""
+    
+    __slots__ = [
+        '_currentlevel',
+        '_currentgrav',
+        '_lastalert',
+    ]
+
+    _currentlevel: str
+    _currentgrav: float
+    _lastalert: str
+
+    def __init__(self,  level: str, alert: str, grav: float):
+        self._currentlevel = level
+        self._lastalert = alert
+        self._currentgrav = grav
 
     def __rich__(self) -> Panel:
-        grid = Table.grid(expand=True)
-        grid.add_column(justify="center", ratio=1)
+        grid = Table.grid(expand = True)
+        grid.add_column(justify="left", ratio = 3)
         grid.add_column(justify="right")
         grid.add_row(
             "[b]RIPSpy[/b] term dashboard",
             datetime.now().ctime().replace(":", "[blink]:[/]"),
         )
-        return Panel(grid, style="white on blue")
+        grid.add_row(
+            f"[b]Current Level:[/b] {self._currentlevel}",
+            "",
+        )
+        grid.add_row(
+            f"[b]Last alert:[/b]  {self._lastalert}",
+            "",
+        )
+        style = "black on bright_red"
+        if self._currentgrav < 0.25:
+            style = "black on light_green"
+        elif self._currentgrav < 0.50:
+            style = "black on yellow3"
+        elif self._currentgrav < 0.75:
+            style = "black on orange3"
+        return Panel(grid, style = style)
 
 def make_layout() -> Layout:
     """Define the layout."""
     layout = Layout(name="root")
 
     layout.split(
-        Layout(name="header", size=3),
+        Layout(name="header", size=5),
         Layout(name="main", ratio=1),
         Layout(name="footer", size=MaxMsgs+2),
     )
     layout["main"].split_row(Layout(name="box_topics"), Layout(name="box_nodes"))
-    layout["header"].update(Header())
+    layout["header"].update(Header("init", "", 0.0))
     layout["footer"].update(Panel("", title="msgs", border_style="green"))
     return layout
 
@@ -65,7 +95,7 @@ def update_nodes(context, layout):
                 continue
         else: 
             t = tree.add(":black_circle_for_record: " + node["node"])
-        tserv = t.add("Services:")
+        tserv = t.add("Services")
         for serv in node["services"]:
             tserv.add(serv["service"])
     layout["box_nodes"].update(Panel(tree, border_style="green"))
@@ -84,12 +114,12 @@ def add_nodes_to_topic(nodes, tree):
                 tree.add(n)
                             
 def update_topics(context, layout):
-    tree = Tree("Topics:")
+    tree = Tree("Topics")
     for topic in context["topics"]:
         t = tree.add(":black_circle_for_record: " + topic["topic"])
-        tpubs = t.add("Publishers:")
+        tpubs = t.add("Publishers")
         add_nodes_to_topic(topic["publishers"], tpubs)
-        tsubs = t.add("Subscribers:") 
+        tsubs = t.add("Subscribers") 
         add_nodes_to_topic(topic["subscribers"], tsubs)
     layout["box_topics"].update(Panel(tree, border_style="green"))
 
@@ -116,13 +146,21 @@ def update_msgs(d, layout):
         last_msgs = "\n".join(last_msgs.split("\n")[to_remove:])
     layout["footer"].update(Panel(last_msgs, title="msgs", border_style="green"))
 
+def update_header(d, layout):
+    level = d["currentlevel"]
+    alert = d["lastalert"]
+    grav = d["currentgrav"]
+    layout["header"].update(Header(level, alert, grav))
+
 def update(d, layout):
     if d["event"] == "message":
         update_msgs(d, layout)
+        None
     elif d["event"] == "graph":
         context = d["context"]
         update_nodes(context, layout)
         update_topics(context, layout)
+    update_header(d, layout)
 
 def mainloop(sock: socket.socket):
     f = os.fdopen(sock.fileno())

@@ -31,6 +31,9 @@ class RipsCore(Node):
         '_socket',
         '_teesocket',
         '_ripscoreq',
+        '_currentlevel',
+        '_currentgrav',
+        '_lastalert',
     ]
 
     __IGNORED_TOPICS = ["/rosout"]
@@ -42,6 +45,9 @@ class RipsCore(Node):
     _socket: socket.socket
     _teesocket: socket.socket
     _ripscoreq: queue.Queue
+    _currentlevel : str
+    _currentgrav: float
+    _lastalert: str
  
     def __init__(self, sock: socket.socket, teesock: socket.socket, coreq: queue.Queue):
         super().__init__('rips')
@@ -51,13 +57,9 @@ class RipsCore(Node):
         self.create_timer(self.__POLLING_TIME, self.timer_callback)
         self._context = RipsContext()
         self.declare_parameter(self.__LEVEL_PARAM_NAME, "__DEFAULT__")
-
-    def _set_level(self, l: str):
-        p = self.get_parameter(self.__LEVEL_PARAM_NAME)
-        if p.get_parameter_value != l:
-            type = rclpy.Parameter.Type.STRING
-            param = rclpy.Parameter(self.__LEVEL_PARAM_NAME, type, l)
-            self.set_parameters([param])
+        self._currentlevel = "init"
+        self._currentgrav = 0.0
+        self._lastalert = "none"
 
     def _send_data(self, m: str):
         assert isinstance(m, str)
@@ -74,6 +76,9 @@ class RipsCore(Node):
     def _send_graph_event(self):
         s = (
                 f"---\n"
+                f"currentlevel: {self._currentlevel}\n"
+                f"currentgrav: {self._currentgrav}\n"
+                f"lastalert: '{self._lastalert}'\n"
                 f"event: graph\n"
                 f"{self._context.to_yaml()}"
                 f"...\n\n"
@@ -91,6 +96,9 @@ class RipsCore(Node):
         rawmsg = "  ".join(rawmsg.splitlines(True))
         s = (
                 f"---\n"
+                f"currentlevel: {self._currentlevel}\n"
+                f"currentgrav: {self._currentgrav}\n"
+                f"lastalert: '{self._lastalert}'\n"
                 f"event: message\n"
                 f"fromtopic: {topic}\n"
                 f"msg:\n"
@@ -127,8 +135,20 @@ class RipsCore(Node):
             topic,
             f,
             self.__QUEUE_DEPTH,
-            raw=True
+            raw = True
         ) 
+
+    def _set_level(self, level: str, grav: float):
+        self._currentlevel = level
+        self._currentgrav = grav
+        p = self.get_parameter(self.__LEVEL_PARAM_NAME)
+        if p.get_parameter_value != level:
+            type = rclpy.Parameter.Type.STRING
+            param = rclpy.Parameter(self.__LEVEL_PARAM_NAME, type, level)
+            self.set_parameters([param])
+
+    def _set_lastalert(self, alert: str):
+        self._lastalert = alert
 
     def timer_callback(self):
         self._update_context()
@@ -138,10 +158,13 @@ class RipsCore(Node):
             if "level" in d:
                 level = d.get("level")
                 self.get_logger().info(f"NEW LEVEL: {level}")
-                self._set_level(level)
+                grav = d.get("gravity")
+                assert isinstance(grav, float)
+                self._set_level(level, grav)
             elif "alert" in d:
                 alert = d.get("alert")
                 self.get_logger().info(f"RIPS ALERT: {alert}")
+                self._set_lastalert(alert)                
             else:
                 self.get_logger().err("BAD DICT IN QUEUE")
 

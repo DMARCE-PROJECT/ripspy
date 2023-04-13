@@ -19,6 +19,7 @@ from rich.live import Live
 from rich.console import Console
 
 MaxMsgs = 20
+MaxAlerts = 5
 TheConsole = None
 
 class Header:
@@ -27,16 +28,14 @@ class Header:
     __slots__ = [
         '_currentlevel',
         '_currentgrav',
-        '_lastalert',
     ]
 
     _currentlevel: str
     _currentgrav: float
     _lastalert: str
 
-    def __init__(self,  level: str, alert: str, grav: float):
+    def __init__(self,  level: str, grav: float):
         self._currentlevel = level
-        self._lastalert = alert
         self._currentgrav = grav
 
     def __rich__(self) -> Panel:
@@ -44,15 +43,11 @@ class Header:
         grid.add_column(justify="left", ratio = 3)
         grid.add_column(justify="right")
         grid.add_row(
-            "[b]RIPSpy[/b] term dashboard",
+            "[b]RIPSpy term dashboard[/b]",
             datetime.now().ctime().replace(":", "[blink]:[/]"),
         )
         grid.add_row(
             f"[b]Current Level:[/b] {self._currentlevel}",
-            "",
-        )
-        grid.add_row(
-            f"[b]Last alert:[/b]  {self._lastalert}",
             "",
         )
         style = "black on bright_red"
@@ -67,15 +62,16 @@ class Header:
 def make_layout() -> Layout:
     """Define the layout."""
     layout = Layout(name="root")
-
     layout.split(
-        Layout(name="header", size=5),
+        Layout(name="header", size=4),
         Layout(name="main", ratio=1),
         Layout(name="footer", size=MaxMsgs+2),
+        Layout(name="footeralerts", size=MaxAlerts+2),
     )
     layout["main"].split_row(Layout(name="box_topics"), Layout(name="box_nodes"))
-    layout["header"].update(Header("init", "", 0.0))
+    layout["header"].update(Header("init", 0.0))
     layout["footer"].update(Panel("", title="msgs", border_style="green"))
+    layout["footeralerts"].update(Panel("", title="alerts", border_style="green"))
     return layout
 
 def update_nodes(context, layout):
@@ -137,20 +133,34 @@ def update_msgs(d, layout):
     now = datetime.now()
     curtime = now.strftime("%H:%M:%S")
     line = f"[r]:envelope: {curtime}[/r] msg to topic:[b]{t}[/b] {msgdata}"
-    line = line[:TheConsole.width-4] ## adjust the width to the console
+    line = line[:TheConsole.width-10] ## adjust the width to the console
     last_msgs = f"{last_msgs}{line}\n"
-    # remove the first N lines to fit the footer size
     l = last_msgs.splitlines()
     if len(l) > MaxMsgs:
-        to_remove = len(l)-MaxMsgs
-        last_msgs = "\n".join(last_msgs.split("\n")[to_remove:])
+        l.pop(0)
+        last_msgs = "\n".join(l) + "\n"
     layout["footer"].update(Panel(last_msgs, title="msgs", border_style="green"))
+
+last_alerts = ""
+
+def update_alerts(d, layout):
+    global last_alerts
+    new = d["lastalert"]
+    if new == "":
+        return
+    l = last_alerts.splitlines()
+    if len(l) != 0 and l[len(l)-1] == new:
+        return
+    l.append(new)
+    if len(l) > MaxAlerts:
+        l.pop(0)
+    last_alerts = "\n".join(l) + "\n"
+    layout["footeralerts"].update(Panel(last_alerts, title="alerts", border_style="green"))
 
 def update_header(d, layout):
     level = d["currentlevel"]
-    alert = d["lastalert"]
     grav = d["currentgrav"]
-    layout["header"].update(Header(level, alert, grav))
+    layout["header"].update(Header(level, grav))
 
 def update(d, layout):
     if d["event"] == "message":
@@ -160,6 +170,7 @@ def update(d, layout):
         context = d["context"]
         update_nodes(context, layout)
         update_topics(context, layout)
+    update_alerts(d, layout)
     update_header(d, layout)
 
 def mainloop(sock: socket.socket):

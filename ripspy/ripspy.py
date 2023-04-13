@@ -59,7 +59,7 @@ class RipsCore(Node):
         self.declare_parameter(self.__LEVEL_PARAM_NAME, "__DEFAULT__")
         self._currentlevel = "init"
         self._currentgrav = 0.0
-        self._lastalert = "none"
+        self._lastalert = ""
 
     def _send_data(self, m: str):
         assert isinstance(m, str)

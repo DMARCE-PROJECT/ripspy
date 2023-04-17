@@ -16,10 +16,12 @@ vars:
 rules Graph:
 
 	! nodecount(1, MaxNodes) && CurrLevel == __DEFAULT__ ?
+		alert("detected more than 4 nodes: too many nodes, entering level ALERT"),
 		trigger(ALERT);
 
 	nodecount(1, MaxNodes) && CurrLevel == ALERT ?
 		set(descalated, descalated+1),
+		alert("returning to default mode"),
 		trigger(__DEFAULT__);
 
 	descalated > 5 && (CurrLevel == ALERT || CurrLevel == __DEFAULT__)?

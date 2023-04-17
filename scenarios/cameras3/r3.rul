@@ -1,0 +1,18 @@
+levels:
+
+	__DEFAULT__;
+	HALT;
+
+consts:
+
+vars:
+
+rules Msg:
+
+  payload("/home/esoriano/prof/doc/prj/dmarce/ros_ws/src/ripspy/scenarios/cameras3/yara.yar") ?
+    alert("malicious payload detected"),
+		exec("/usr/bin/spd-say", "malicious payload detected"),
+		exec("/bin/sleep", "5"),
+		trigger(HALT);
+
+

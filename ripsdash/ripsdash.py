@@ -135,21 +135,12 @@ def update_msgs(d, layout):
     now = datetime.now()
     curtime = now.strftime("%H:%M:%S")
     line = f"✉ {curtime} msg to topic:{t} {msgdata}"
-  ##  line = line[:TheConsole.width-2] ## adjust the width to the console
-    print("line len: " + str(len(line)) + " console len: " + str(TheConsole.width), file=sys.stderr) 
     last_msgs = f"{last_msgs}{line}\n"
     l = last_msgs.splitlines()
     if len(l) > MaxMsgs:
         l.pop(0)
         last_msgs = "\n".join(l) + "\n"
     t = Text(last_msgs, overflow="ellipsis", no_wrap=True)
-    #t = Text.from_markup(last_msgs)
-    #t.wrap(TheConsole, TheConsole.width, overflow="crop")
-    #table = Table("msgs", width=TheConsole.width-10)
-    #for elem in last_msgs.splitlines():
-    #    table.add_row(elem)
-    #    print("elem:" + elem, file=sys.stderr)
-
     layout["footer"].update(Panel(t, title="msgs", border_style="green"))
 
 last_alerts = ""
@@ -159,6 +150,7 @@ def update_alerts(d, layout):
     new = d["lastalert"]
     if new == "":
         return
+    new = "".join(new.splitlines())
     l = last_alerts.splitlines()
     if len(l) != 0 and l[len(l)-1] == new:
         return
@@ -166,7 +158,8 @@ def update_alerts(d, layout):
     if len(l) > MaxAlerts:
         l.pop(0)
     last_alerts = "\n".join(l) + "\n"
-    layout["footeralerts"].update(Panel(last_alerts, title="alerts", border_style="green"))
+    t = Text(last_alerts, overflow="ellipsis", no_wrap=True)
+    layout["footeralerts"].update(Panel(t, title="alerts", border_style="green"))
 
 def update_header(d, layout):
     level = d["currentlevel"]

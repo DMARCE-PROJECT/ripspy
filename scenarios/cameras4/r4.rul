@@ -1,0 +1,38 @@
+levels:
+	__DEFAULT__;
+	COMPROMISED;
+	HALT;
+
+consts:
+	MaxBadMsgs int = 100;
+
+vars:
+	isstdstring bool = false;
+	isrclparamevent bool = false;
+	nmsgs int = 0;
+
+rules Msg:
+
+	msgsubtype("rcl_interfaces", "ParameterEvent") ?
+		set(isrclparamevent, true);
+
+	msgsubtype("std_msgs","String") ?
+		set(isstdstring, true);
+
+	!isrclparamevent && !isstdstring ?
+		alert("forbidden msg type"),
+		set(nmsgs, nmsgs+1),
+		trigger(COMPROMISED);
+		
+	true ?
+		set(isrclparamevent, false),
+		set(isstdstring, false);
+
+	nmsgs >= MaxBadMsgs && CurrLevel != HALT ?
+		alert("too many bad messages"),
+		exec("/usr/bin/spd-say", "fatal, too many forbidden messages, halting the system"),
+		exec("/bin/sleep", "5"),
+		trigger(HALT);
+	
+
+

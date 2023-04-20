@@ -17,6 +17,7 @@ from rich.tree import Tree
 from rich import print
 from rich.live import Live
 from rich.console import Console
+from rich.text import Text
 
 MaxMsgs = 20
 MaxAlerts = 5
@@ -127,19 +128,29 @@ def update_msgs(d, layout):
     m = d["msg"]
     msgdata = ""
     if "data" in m.keys():
-        msgdata = f"String content: [i]{m['data']}[/i]"
+        msgdata = f"String content: {m['data']}"
     else:
-        msgdata = f"Base64 content: [i]{d['rawmsg']}[/i]".strip()
+        msgdata = f"Base64 content: {d['rawmsg']}".strip()
+    msgdata = "".join(msgdata.splitlines())
     now = datetime.now()
     curtime = now.strftime("%H:%M:%S")
-    line = f"[r]:envelope: {curtime}[/r] msg to topic:[b]{t}[/b] {msgdata}"
-    line = line[:TheConsole.width-10] ## adjust the width to the console
+    line = f"✉ {curtime} msg to topic:{t} {msgdata}"
+  ##  line = line[:TheConsole.width-2] ## adjust the width to the console
+    print("line len: " + str(len(line)) + " console len: " + str(TheConsole.width), file=sys.stderr) 
     last_msgs = f"{last_msgs}{line}\n"
     l = last_msgs.splitlines()
     if len(l) > MaxMsgs:
         l.pop(0)
         last_msgs = "\n".join(l) + "\n"
-    layout["footer"].update(Panel(last_msgs, title="msgs", border_style="green"))
+    t = Text(last_msgs, overflow="ellipsis", no_wrap=True)
+    #t = Text.from_markup(last_msgs)
+    #t.wrap(TheConsole, TheConsole.width, overflow="crop")
+    #table = Table("msgs", width=TheConsole.width-10)
+    #for elem in last_msgs.splitlines():
+    #    table.add_row(elem)
+    #    print("elem:" + elem, file=sys.stderr)
+
+    layout["footer"].update(Panel(t, title="msgs", border_style="green"))
 
 last_alerts = ""
 

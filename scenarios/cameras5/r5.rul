@@ -1,0 +1,18 @@
+levels:
+	__DEFAULT__;
+	HALT;
+
+consts:
+
+vars:
+
+rules Msg:
+
+	plugin("/home/esoriano/prof/doc/prj/dmarce/ros_ws/src/ripspy/scenarios/cameras5/plugin.py") && CurrLevel != HALT ?
+		alert("plugin detected a bad message"),
+		exec("/usr/bin/spd-say", "plugin detected a bad message"),
+		exec("/bin/sleep", "5"),
+		trigger(HALT);
+	
+
+

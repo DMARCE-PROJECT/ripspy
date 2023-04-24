@@ -215,7 +215,7 @@ def main(args=None):
         logger.err("RIPSRULES environment variable not defined")
         os._exit(1)  
     sharepath = get_package_share_directory('ripspy')
-    proc = Popen([sharepath+'/bin/rips', rulespath, sockpath, scriptspath])
+    proc = Popen([sharepath+'/bin/rips', "-s", sockpath, scriptspath, rulespath])
     sleep(2) 
     if proc.poll() != None:
         logger.err("go process not ready, aborting")

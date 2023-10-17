@@ -92,9 +92,9 @@ def update_nodes(context, layout):
                 continue
         else: 
             t = tree.add(":black_circle_for_record: " + node["node"])
-        tserv = t.add("Services")
-        for serv in node["services"]:
-            tserv.add(serv["service"])
+        #tserv = t.add("Services")
+        #for serv in node["services"]:
+        #    tserv.add(serv["service"])
     layout["box_nodes"].update(Panel(tree, border_style="green"))
 
 def add_nodes_to_topic(nodes, tree):

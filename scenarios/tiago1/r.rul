@@ -1,0 +1,22 @@
+levels:
+
+	__DEFAULT__;
+	PERSON soft;
+#	ALERT soft;
+#	COMPROMISED;
+#	HALT;
+
+consts:
+
+vars:
+
+rules Graph:
+
+rules Msg:
+	topicmatches("/person") && CurrLevel == __DEFAULT__ && plugin("/home/esoriano/prof/doc/prj/dmarce/ros_ws/src/ripspy/scenarios/tiago1/plugin.py") ?
+		alert("person detected"),
+		trigger(PERSON);
+
+	topicmatches("/person") && CurrLevel == PERSON && !plugin("/home/esoriano/prof/doc/prj/dmarce/ros_ws/src/ripspy/scenarios/tiago1/plugin.py") ?
+		alert("person not detected"),
+		trigger(__DEFAULT__);

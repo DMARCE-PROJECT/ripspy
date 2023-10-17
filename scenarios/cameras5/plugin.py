@@ -6,7 +6,7 @@ from rclpy.serialization import deserialize_message
 
 def main():   
   data = sys.stdin.buffer.read()
-  msgtype = get_message("rcl_interfaces/msg/Log")
+  msgtype = get_message("std_msg/msg/String")
   try:
     msg = deserialize_message(data, msgtype)
   except Exception as e: 

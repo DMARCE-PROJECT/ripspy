@@ -60,6 +60,9 @@ class RipsCore(Node):
         self._currentlevel = "init"
         self._currentgrav = 0.0
         self._lastalert = ""
+        blacklist = os.environ.get('RIPSBLACKLIST', '')
+        if blacklist !='':
+            self.__IGNORED_TOPICS = self.__IGNORED_TOPICS +  blacklist.split(":")
 
     def _send_data(self, m: str):
         assert isinstance(m, str)
@@ -142,7 +145,7 @@ class RipsCore(Node):
         assert isinstance(level, str)
         self.cli = self.create_client(ChangeMode, '/safety/change_mode')
         if not self.cli.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('service /safety/change_mode not available, waiting again...')
+            self.get_logger().warn('service /safety/change_mode not available')
             return None
         self.req = ChangeMode.Request()
         self.req.mode_name = level
@@ -187,8 +190,11 @@ class RipsCore(Node):
         nodes = self.get_node_names()
         self._customcontext.update_nodes(nodes)
         for elem in nodes:
-            services = self.get_service_names_and_types_by_node(elem, "/")
-            self._customcontext.update_services(elem, services)
+            try:
+                services = self.get_service_names_and_types_by_node(elem, "/")
+                self._customcontext.update_services(elem, services)
+            except:
+                self.get_logger().warning(f"error getting info for node: " + elem)
         topics = self.get_topic_names_and_types()
         for elem in topics:
             pubs = self.get_publishers_info_by_topic(elem[0])
@@ -226,8 +232,8 @@ def main(args=None):
     sockpath = os.environ.get('RIPSSOCKET', "/tmp/rips.socket")
     rulespath = os.environ.get('RIPSRULES', '')
     scriptspath = os.environ.get('RIPSSCRIPTS', '')
-    if rulespath == '':
-        logger.error("RIPSRULES environment variable not defined")
+    if rulespath == '' or scriptspath == '':
+        logger.error("RIPSRULES or RIPSCRIPTS environment variables are not defined")
         os._exit(1)  
     sharepath = get_package_share_directory('ripspy')
     proc = Popen([sharepath+'/bin/rips', "-s", sockpath, scriptspath, rulespath])
@@ -256,7 +262,7 @@ def main(args=None):
             dashsock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             dashsock.connect(teesockpath)
         except:
-                logger.error("can't connect to dash socket, aborting")  
+                logger.error("can't connect to dash socket: " + teesockpath + ", aborting")  
                 proc.kill()
                 os._exit(1)
 

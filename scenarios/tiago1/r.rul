@@ -1,22 +1,16 @@
 levels:
 
 	__DEFAULT__;
-	PERSON soft;
-#	ALERT soft;
-#	COMPROMISED;
-#	HALT;
+
+HALT;
 
 consts:
+	MaxNodes int = 55;  
 
-vars:
 
 rules Graph:
 
-rules Msg:
-	topicmatches("/person") && CurrLevel == __DEFAULT__ && plugin("/home/esoriano/prof/doc/prj/dmarce/ros_ws/src/ripspy/scenarios/tiago1/plugin.py") ?
-		alert("person detected"),
-		trigger(PERSON);
+	!nodecount(1, MaxNodes) && CurrLevel != HALT ?
+		alert("returning to default mode"),
+		trigger(HALT);
 
-	topicmatches("/person") && CurrLevel == PERSON && !plugin("/home/esoriano/prof/doc/prj/dmarce/ros_ws/src/ripspy/scenarios/tiago1/plugin.py") ?
-		alert("person not detected"),
-		trigger(__DEFAULT__);

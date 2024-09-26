@@ -1,15 +1,15 @@
 ## Copyright (C) 2023  Enrique Soriano <enrique.soriano@urjc.es>
-## 
+##
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 3 of the License, or
 ## (at your option) any later version.
-## 
+##
 ## This program is distributed in the hope that it will be useful,
 ## but WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## GNU General Public License for more details.
-## 
+##
 ## You should have received a copy of the GNU General Public License
 ## along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -34,7 +34,7 @@ import sys
 from system_modes_msgs.srv import ChangeMode
 
 # All missing asserts for isinstance are deleted because of
-# this error: Subscripted generics cannot be used with class 
+# this error: Subscripted generics cannot be used with class
 # and instance checks. For example, this one raises the error:
 # assert isinstance(pubs, List[rclpy.node.TopicEndpointInfo])
 
@@ -53,7 +53,7 @@ class RipsCore(Node):
 
     __IGNORED_TOPICS = ["/rosout"]
     __POLLING_TIME = 0.5  # secs
-    __QUEUE_DEPTH = 100 
+    __QUEUE_DEPTH = 100
     __LEVEL_PARAM_NAME = "systemmode"
 
     _customcontext: RipsContext
@@ -63,7 +63,7 @@ class RipsCore(Node):
     _currentlevel: str
     _currentgrav: float
     _lastalert: str
- 
+
     def __init__(self, sock: socket.socket, teesock: socket.socket, coreq: queue.Queue):
         super().__init__('rips')
         self._socket = sock
@@ -90,7 +90,7 @@ class RipsCore(Node):
                 self._teesocket.sendall(m.encode(encoding = 'UTF-8'))
             except:
                 self.get_logger().warning(f"can't send event to ripspydash")
-               
+
     def _send_graph_event(self):
         s = (
                 f"---\n"
@@ -107,9 +107,9 @@ class RipsCore(Node):
         assert isinstance(topic, str)
         assert isinstance(msg, str)
         assert isinstance(raw, bytes)
-        # possible bug: with message_to_yaml, long String messages 
+        # possible bug: with message_to_yaml, long String messages
         # may generate lines too long for YAML (max. line is 80)
-        msg = "  ".join(msg.splitlines(True)) 
+        msg = "  ".join(msg.splitlines(True))
         rawmsg = base64.encodebytes(raw).decode()
         rawmsg = "  ".join(rawmsg.splitlines(True))
         s = (
@@ -126,12 +126,13 @@ class RipsCore(Node):
                 f"{self._customcontext.to_yaml()}"
                 f"...\n\n"
         )
+        self.get_logger().info(f"sending data")
         self._send_data(s)
 
-    def _subscribe(self, topic: str): 
+    def _subscribe(self, topic: str):
         assert isinstance(topic, str)
         if topic in self.__IGNORED_TOPICS:
-            return 
+            return
         self.get_logger().info(f"subscribing to topic {topic}")
         try:
             params = self._customcontext.params_of(topic)
@@ -140,11 +141,20 @@ class RipsCore(Node):
             return
         if len(params) != 1:
             self.get_logger().warning(f"Topic {topic} has more than one type")
-            return 
-        msgtype = get_message(params[0]) 
+            return
+        try:
+            msgtype = get_message(params[0])
+        except:
+            self.get_logger().warning(f"Unknown message type {params[0]}, topic {topic} added to __IGNORED_TOPICS {self.__IGNORED_TOPICS}")
+            self.__IGNORED_TOPICS.append(topic)
+            return
         def f(binmsg):
             ## we want both the serialized (binary) msg and the python message
-            pymsg = deserialize_message(binmsg, msgtype)
+            try:
+                pymsg = deserialize_message(binmsg, msgtype)
+            except:
+                self.get_logger().warning(f"can't deserilialize message, skipping subscription")
+                return
             self._update_context()
             self._send_msg_event(topic, message_to_yaml(pymsg), binmsg);
             #self.get_logger().info(f"Received from topic {topic}")
@@ -154,20 +164,23 @@ class RipsCore(Node):
             f,
             self.__QUEUE_DEPTH,
             raw = True
-        ) 
+        )
 
     def _invoke_service(self, level: str):
+        self.get_logger().warning(f"going to invoke the service level is {level}")
         assert isinstance(level, str)
         self.cli = self.create_client(ChangeMode, '/safety/change_mode')
         if not self.cli.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('service /safety/change_mode not available')
+            self.get_logger().warning('service /safety/change_mode not available')
             return None
+        self.get_logger().warning(f"service ready")
         self.req = ChangeMode.Request()
         self.req.mode_name = level
         self.future = self.cli.call_async(self.req)
-        rclpy.spin_until_future_complete(self, self.future)
+        #rclpy.spin_until_future_complete(self, self.future)
+        self.get_logger().warning(f"Service invoked!!!!!!!!!!!!")
         return self.future.result()
-    
+
     ## two methods to notify system modes: parameter and service
     def _set_level(self, level: str, grav: float):
         self._currentlevel = level
@@ -176,7 +189,7 @@ class RipsCore(Node):
         if p.get_parameter_value != level:
             type = rclpy.Parameter.Type.STRING
             param = rclpy.Parameter(self.__LEVEL_PARAM_NAME, type, level)
-            self.set_parameters([param])    
+            self.set_parameters([param])
         if self._invoke_service(level) == None:
             self.get_logger().warning(f"can't change system_modes mode, service not found")
 
@@ -197,7 +210,7 @@ class RipsCore(Node):
             elif "alert" in d:
                 alert = d.get("alert")
                 self.get_logger().info(f"RIPS ALERT: {alert}")
-                self._set_lastalert(alert)                
+                self._set_lastalert(alert)
             else:
                 self.get_logger().error("BAD DICT IN QUEUE")
 
@@ -222,7 +235,7 @@ class RipsCore(Node):
         if self._customcontext.check_and_clear():
             self._send_graph_event()
             self.get_logger().info("Context changed")
-        
+
 def from_engine_thread(sock: socket.socket, q: queue.Queue):
     f = os.fdopen(sock.fileno())
     start = False
@@ -249,19 +262,19 @@ def main(args=None):
     scriptspath = os.environ.get('RIPSSCRIPTS', '')
     if rulespath == '' or scriptspath == '':
         logger.error("RIPSRULES or RIPSCRIPTS environment variables are not defined")
-        os._exit(1)  
+        os._exit(1)
     sharepath = get_package_share_directory('ripspy')
     proc = Popen([sharepath+'/bin/rips', "-s", sockpath, scriptspath, rulespath])
-    sleep(2) 
+    sleep(2)
     if proc.poll() != None:
         logger.error("go process not ready, aborting")
         os._exit(1)
-    logger.info(f"connecting to unix socket {sockpath}")   
+    logger.info(f"connecting to unix socket {sockpath}")
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(sockpath)
     except:
-        logger.error("can't connect to socket, aborting")  
+        logger.error("can't connect to socket, aborting")
         proc.kill()
         os._exit(1)
 
@@ -277,7 +290,7 @@ def main(args=None):
             dashsock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             dashsock.connect(teesockpath)
         except:
-                logger.error("can't connect to dash socket: " + teesockpath + ", aborting")  
+                logger.error("can't connect to dash socket: " + teesockpath + ", aborting")
                 proc.kill()
                 os._exit(1)
 

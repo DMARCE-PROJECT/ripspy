@@ -51,7 +51,8 @@ class RipsCore(Node):
         '_lastalert',
     ]
 
-    __IGNORED_TOPICS = ["/rosout"]
+    __WHITELIST_TOPICS = ["/hola2","/head_front_camera/depth/points"] #["/hola2","/scan_raw"]
+    __BLACKLIST_TOPICS = ["/rosout"] #"/head_front_camera/depth/points","/head_front_camera/depth/rgb/points"]
     __POLLING_TIME = 0.5  # secs
     __QUEUE_DEPTH = 100
     __LEVEL_PARAM_NAME = "systemmode"
@@ -77,7 +78,7 @@ class RipsCore(Node):
         self._lastalert = ""
         blacklist = os.environ.get('RIPSBLACKLIST', '')
         if blacklist !='':
-            self.__IGNORED_TOPICS = self.__IGNORED_TOPICS +  blacklist.split(":")
+            self.__BLACKLIST_TOPICS = self.__BLACKLIST_TOPICS +  blacklist.split(":")
 
     def _send_data(self, m: str):
         assert isinstance(m, str)
@@ -126,12 +127,14 @@ class RipsCore(Node):
                 f"{self._customcontext.to_yaml()}"
                 f"...\n\n"
         )
-        self.get_logger().info(f"sending data")
+        self.get_logger().info(f"sending data to core")
         self._send_data(s)
 
     def _subscribe(self, topic: str):
         assert isinstance(topic, str)
-        if topic in self.__IGNORED_TOPICS:
+        if topic in self.__BLACKLIST_TOPICS:
+            return
+        if len(self.__WHITELIST_TOPICS) > 0 and not topic in self.__WHITELIST_TOPICS:
             return
         self.get_logger().info(f"subscribing to topic {topic}")
         try:
@@ -145,19 +148,18 @@ class RipsCore(Node):
         try:
             msgtype = get_message(params[0])
         except:
-            self.get_logger().warning(f"Unknown message type {params[0]}, topic {topic} added to __IGNORED_TOPICS {self.__IGNORED_TOPICS}")
-            self.__IGNORED_TOPICS.append(topic)
+            self.get_logger().warning(f"Unknown message type {params[0]}, topic {topic} added to __BLACKLIST_TOPICS {self.__BLACKLIST_TOPICS}")
+            self.__BLACKLIST_TOPICS.append(topic)
             return
         def f(binmsg):
             ## we want both the serialized (binary) msg and the python message
             try:
                 pymsg = deserialize_message(binmsg, msgtype)
             except:
-                self.get_logger().warning(f"can't deserilialize message, skipping subscription")
+                self.get_logger().warning(f"can't deserilialize message")
                 return
             self._update_context()
             self._send_msg_event(topic, message_to_yaml(pymsg), binmsg);
-            #self.get_logger().info(f"Received from topic {topic}")
         subscription = self.create_subscription(
             msgtype,
             topic,
@@ -178,7 +180,7 @@ class RipsCore(Node):
         self.req.mode_name = level
         self.future = self.cli.call_async(self.req)
         #rclpy.spin_until_future_complete(self, self.future)
-        self.get_logger().warning(f"Service invoked!!!!!!!!!!!!")
+        self.get_logger().warning(f"Service invoked")
         return self.future.result()
 
     ## two methods to notify system modes: parameter and service

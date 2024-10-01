@@ -29,6 +29,9 @@ export RIPSSCRIPTS=myscripts
 ros2 run ripspy ripspy
 ```
 
+The ROS2 packages for message types to be inspected by Rips must
+be properly installed.
+
 # Status
 
 ## Subexpressions for message events

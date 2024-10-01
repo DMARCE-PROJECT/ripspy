@@ -1,38 +1,39 @@
 # ripspy
 
-Python RIPS monitor prototype. 
+Python RIPS monitor prototype.
 
 # Build
 
+If you want to change the engine, build the Golang program
+rips and copy the binary to bin.
+
 ```
-cd .. # go to the workspace root
+cd $myworkspace
 colcon build --packages-select ripspy --symlink-install
 ```
 
-# Testing and linting
+# Run
+
+You have to set some environment variables before running it. *RIPRULES* is
+the path for a Rips rules file. You have some examples in the directory
+_scenarios_. *RIPSCRIPTS* is the path to the directory with the scripts
+needed for the Rips rule file.
+
+For example:
 
 ```
-cd .. # go to the workspace root
-colcon test --packages-select ripspy --python-testing pytest
-```
-
-If there are errors:
-
-```
-cd ..  # go to the workspace root
-cat log/latest/ripspy/stdout_stderr.log 
+cd $myworkspace
+. install/setup.bash
+export RIPSRULES=r.rul
+export RIPSSCRIPTS=myscripts
+ros2 run ripspy ripspy
 ```
 
 # Status
 
-RIPS should be used only with strict ROS2 security enabled. 
-It doesn't make sense to run it if nodes can be impersonated.
-
-RIPS always runs on domain 0.
-
 ## Subexpressions for message events
 
-### Covered 
+### Covered
 
 • topicin(topics:set of string): This function returns true if the topic name
 of the message is included in the specified set of topic names.

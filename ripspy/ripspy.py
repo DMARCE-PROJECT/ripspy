@@ -267,6 +267,14 @@ def main(args=None):
         os._exit(1)
     sharepath = get_package_share_directory('ripspy')
     proc = Popen([sharepath+'/bin/rips', "-s", sockpath, scriptspath, rulespath])
+    # Give some time to the engine to start and create the socket. Note that this
+    # is not a trivial issue: (i) the engine needs some time to create the socket;
+    # (ii) the socket may exist from a previous (incorrect) execution; (iii) the engine
+    # can crash while starting (before creating the socket).
+    # The race is worse without this delay (it's not ideal, but it works).
+    # Posible solution: use inotify to watch the path, overkill??
+    # Another one: change the protocol, add a hello message and set an alarm. overkill??
+    # Polling is not necessary, just wait 2 sec and go.
     sleep(2)
     if proc.poll() != None:
         logger.error("go process not ready, aborting")

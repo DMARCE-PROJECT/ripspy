@@ -5,7 +5,7 @@ levels:
 HALT;
 
 consts:
-	MaxNodes int = 55;  
+	MaxNodes int = 1000;  
 
 
 rules Graph:
@@ -13,4 +13,3 @@ rules Graph:
 	!nodecount(1, MaxNodes) && CurrLevel != HALT ?
 		alert("returning to default mode"),
 		trigger(HALT);
-

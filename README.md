@@ -17,7 +17,7 @@ colcon build --packages-select ripspy --symlink-install
 You have to set some environment variables before running it. *RIPRULES* is
 the path for a Rips rules file. You have some examples in the directory
 _scenarios_. *RIPSCRIPTS* is the path to the directory with the scripts
-needed for the Rips rule file.
+required for the selected rule file.
 
 For example:
 

@@ -49,10 +49,11 @@ class RipsCore(Node):
         '_currentlevel',
         '_currentgrav',
         '_lastalert',
+        '_whitelist',
+        '_blacklist',
+        '_subscribedto',
     ]
 
-    __WHITELIST_TOPICS = ["/hola2","/head_front_camera/depth/points"] #["/hola2","/scan_raw"]
-    __BLACKLIST_TOPICS = ["/rosout"] #"/head_front_camera/depth/points","/head_front_camera/depth/rgb/points"]
     __POLLING_TIME = 0.5  # secs
     __QUEUE_DEPTH = 100
     __LEVEL_PARAM_NAME = "systemmode"
@@ -64,6 +65,14 @@ class RipsCore(Node):
     _currentlevel: str
     _currentgrav: float
     _lastalert: str
+    # if the whitelist is empty, all topics are ok except those in the blacklist
+    _whitelist: List[str]
+    _blacklist: List[str]
+    # Not to be confused with Node._subscriptions. This is for
+    # local accounting, used to ensure just one subscription per topic, it's
+    # just a paranoid double-check. This list should have the same subcriptions
+    # than Node._subscriptions.
+    _localsubscriptions: List[rclpy.subscription.Subscription]
 
     def __init__(self, sock: socket.socket, teesock: socket.socket, coreq: queue.Queue):
         super().__init__('rips')
@@ -76,9 +85,15 @@ class RipsCore(Node):
         self._currentlevel = "init"
         self._currentgrav = 0.0
         self._lastalert = ""
-        blacklist = os.environ.get('RIPSBLACKLIST', '')
-        if blacklist !='':
-            self.__BLACKLIST_TOPICS = self.__BLACKLIST_TOPICS +  blacklist.split(":")
+        self._whitelist = []
+        self._blacklist = ["/rosout"]
+        self._localsubscriptions = []
+        bl = os.environ.get('RIPSBLACKLIST', '')
+        if bl != '':
+            self._blacklist = self._blacklist +  bl.split(":")
+        wl = os.environ.get('RIPSWHITELIST', '')
+        if wl != '':
+            self._whitelist= self._whitelist +  wl.split(":")
 
     def _send_data(self, m: str):
         assert isinstance(m, str)
@@ -127,39 +142,48 @@ class RipsCore(Node):
                 f"{self._customcontext.to_yaml()}"
                 f"...\n\n"
         )
-        self.get_logger().info(f"sending data to core")
         self._send_data(s)
+
+    # double check for paranoids
+    def _already_subscribed(self, topic: str) -> bool:
+          for s in self._localsubscriptions:
+              if s.topic_name == topic:
+                  return True
+          return False
 
     def _subscribe(self, topic: str):
         assert isinstance(topic, str)
-        if topic in self.__BLACKLIST_TOPICS:
+        if topic in self._blacklist:
             return
-        if len(self.__WHITELIST_TOPICS) > 0 and not topic in self.__WHITELIST_TOPICS:
+        if len(self._whitelist) > 0 and not topic in self._whitelist:
             return
-        self.get_logger().info(f"subscribing to topic {topic}")
+        if self._already_subscribed(topic):
+            self.get_logger().error(f"Already subscribed to {topic}, this should not happen!")
+            return
+        self.get_logger().info(f"Subscribing to topic {topic}")
         try:
             params = self._customcontext.params_of(topic)
         except:
-            self.get_logger().warning(f"can't subscribe to topic {topic}: no such topic")
+            self.get_logger().warning(f"Can't subscribe to topic {topic}: no such topic")
             return
         if len(params) != 1:
-            self.get_logger().warning(f"Topic {topic} has more than one type")
+            self.get_logger().warning(f"Topic {topic} has more than one type, skipping")
             return
         try:
             msgtype = get_message(params[0])
         except:
-            self.get_logger().warning(f"Unknown message type {params[0]}, topic {topic} added to __BLACKLIST_TOPICS {self.__BLACKLIST_TOPICS}")
-            self.__BLACKLIST_TOPICS.append(topic)
+            self.get_logger().warning(f"Unknown message type {params[0]}, {topic} is blacklisted")
+            self._blacklist.append(topic)
             return
         def f(binmsg):
             ## we want both the serialized (binary) msg and the python message
             try:
                 pymsg = deserialize_message(binmsg, msgtype)
             except:
-                self.get_logger().warning(f"can't deserilialize message")
+                self.get_logger().warning(f"Handle: can't deserilialize message, type: {msgtype}")
                 return
             self._update_context()
-            self._send_msg_event(topic, message_to_yaml(pymsg), binmsg);
+            self._send_msg_event(topic, message_to_yaml(pymsg), binmsg)
         subscription = self.create_subscription(
             msgtype,
             topic,
@@ -167,21 +191,17 @@ class RipsCore(Node):
             self.__QUEUE_DEPTH,
             raw = True
         )
+        self._localsubscriptions.append(subscription)
 
     def _invoke_service(self, level: str):
-        self.get_logger().warning(f"going to invoke the service level is {level}")
         assert isinstance(level, str)
         self.cli = self.create_client(ChangeMode, '/safety/change_mode')
         if not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().warning('service /safety/change_mode not available')
             return None
-        self.get_logger().warning(f"service ready")
         self.req = ChangeMode.Request()
         self.req.mode_name = level
-        self.future = self.cli.call_async(self.req)
-        #rclpy.spin_until_future_complete(self, self.future)
-        self.get_logger().warning(f"Service invoked")
-        return self.future.result()
+        self.cli.call_async(self.req)
 
     ## two methods to notify system modes: parameter and service
     def _set_level(self, level: str, grav: float):
@@ -192,8 +212,7 @@ class RipsCore(Node):
             type = rclpy.Parameter.Type.STRING
             param = rclpy.Parameter(self.__LEVEL_PARAM_NAME, type, level)
             self.set_parameters([param])
-        if self._invoke_service(level) == None:
-            self.get_logger().warning(f"can't change system_modes mode, service not found")
+        self._invoke_service(level)
 
     def _set_lastalert(self, alert: str):
         self._lastalert = alert
@@ -205,13 +224,13 @@ class RipsCore(Node):
             assert isinstance(d, dict)
             if "level" in d:
                 level = d.get("level")
-                self.get_logger().info(f"NEW LEVEL: {level}")
+                self.get_logger().info(f"New level: {level}")
                 grav = d.get("gravity")
                 assert isinstance(grav, float)
                 self._set_level(level, grav)
             elif "alert" in d:
                 alert = d.get("alert")
-                self.get_logger().info(f"RIPS ALERT: {alert}")
+                self.get_logger().info(f"Rips alert: {alert}")
                 self._set_lastalert(alert)
             else:
                 self.get_logger().error("BAD DICT IN QUEUE")

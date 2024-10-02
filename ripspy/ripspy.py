@@ -68,7 +68,7 @@ class RipsCore(Node):
     # if the whitelist is empty, all topics are ok except those in the blacklist
     _whitelist: List[str]
     _blacklist: List[str]
-    # Not to be confused with Node._subscriptions. This is for
+    # Not to be confused with Node._subscriptions. This is used for
     # local accounting, used to ensure just one subscription per topic, it's
     # just a paranoid double-check. This list should have the same subcriptions
     # than Node._subscriptions.

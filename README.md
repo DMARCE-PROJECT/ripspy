@@ -5,7 +5,7 @@ Python RIPS monitor prototype.
 # Build
 
 If you want to change the engine, build the Golang program
-rips and copy the binary to bin.
+(https://github.com/DMARCE-PROJECT/rips) and copy the binary to _./bin/rips_.
 
 ```
 cd $myworkspace

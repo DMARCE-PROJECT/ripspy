@@ -32,6 +32,21 @@ ros2 run ripspy ripspy
 The ROS2 packages for message types to be inspected by Rips must
 be properly installed.
 
+Other environment variables:
+
+* RIPSBLACKLIST: A list of topics seppared by ':'. The monitor will ignore
+those topics.
+
+* RIPSWHITELIST: A list of topics sepparated by ':'. If the variable exists
+  and the list is not empty, the monitor will be subscribed only to those
+  topics (if they are not in the black list).
+
+* RIPSSOCKET: The path for the UNIX domain socket for the engine. If this
+variable is not set, /tmp/rips.socket is used by default.
+
+* RIPSTEESOCKET: The path for the UNIX domain socket for the dashboard.
+It must be set if the dashboard is executing.
+
 # Status
 
 ## Subexpressions for message events

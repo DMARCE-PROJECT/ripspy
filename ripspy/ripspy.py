@@ -94,6 +94,8 @@ class RipsCore(Node):
         wl = os.environ.get('RIPSWHITELIST', '')
         if wl != '':
             self._whitelist= self._whitelist +  wl.split(":")
+        self.get_logger().info(f"Blacklist: {self._blacklist}")
+        self.get_logger().info(f"Whitelist: {self._whitelist}")
 
     def _send_data(self, m: str):
         assert isinstance(m, str)
@@ -276,7 +278,6 @@ def from_engine_thread(sock: socket.socket, q: queue.Queue):
                 print(f"ERROR: sockthread: bad YAML\n{s}\n", file=sys.stderr)
 
 def main(args=None):
-    rclpy.init(args=args)
     logger = rclpy.logging.get_logger("rips")
     sockpath = os.environ.get('RIPSSOCKET', "/tmp/rips.socket")
     rulespath = os.environ.get('RIPSRULES', '')
@@ -323,9 +324,9 @@ def main(args=None):
                 proc.kill()
                 os._exit(1)
 
+    rclpy.init(args=args)
     rips_core = RipsCore(sock, dashsock, ripsq)
     logger.info("RIPS core is ready")
-
     rclpy.spin(rips_core)
     proc.kill()
     sockthread.join()

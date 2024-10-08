@@ -35,11 +35,6 @@ from system_modes_msgs.srv import ChangeMode
 import subprocess
 import _io
 
-# All missing asserts for isinstance are deleted because of
-# this error: Subscripted generics cannot be used with class
-# and instance checks. For example, this one raises the error:
-# assert isinstance(pubs, List[rclpy.node.TopicEndpointInfo])
-
 class RipsCore(Node):
     """Rips node."""
 

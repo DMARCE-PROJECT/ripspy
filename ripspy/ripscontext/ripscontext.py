@@ -17,7 +17,7 @@ from typing import Dict, List, Tuple
 
 import rclpy
 
-# All missing asserts for isinstance are deleted because of
+# All missing asserts for isinstance were deleted because of
 # this error: Subscripted generics cannot be used with class
 # and instance checks. For example, this one raises the error:
 # assert isinstance(pubs, List[rclpy.node.TopicEndpointInfo])

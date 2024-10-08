@@ -82,7 +82,7 @@ class RipsCore(Node):
 
     def __init__(self, sock: socket.socket, teesock: socket.socket, coreq: queue.Queue, nmsg: bool, nraw: bool):
         assert isinstance(sock, socket.socket)
-        assert teesock == None or isinstance(teesock, socket.socket) 
+        assert teesock == None or isinstance(teesock, socket.socket)
         assert isinstance(coreq, queue.Queue)
         assert isinstance(nmsg, bool)
         assert isinstance(nraw, bool)
@@ -352,9 +352,6 @@ def connect_to_engine(logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> tuple[
 def handshake(sock: socket.socket, logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> tuple[bool, bool]:
     assert isinstance(sock, socket.socket)
     assert isinstance(logger, rclpy.impl.rcutils_logger.RcutilsLogger)
-
-    return False, False
-
     f = os.fdopen(sock.fileno())
     d = read_yaml(f)
     if d == None or (not "msg" in d or not "raw" in d):

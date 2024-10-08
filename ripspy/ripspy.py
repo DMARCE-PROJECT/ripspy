@@ -32,6 +32,8 @@ from std_msgs.msg import String
 from ripspy.ripscontext.ripscontext import RipsContext
 import sys
 from system_modes_msgs.srv import ChangeMode
+import subprocess
+import _io
 
 # All missing asserts for isinstance are deleted because of
 # this error: Subscripted generics cannot be used with class
@@ -52,6 +54,8 @@ class RipsCore(Node):
         '_whitelist',
         '_blacklist',
         '_subscribedto',
+        '_needmsgs',
+        '_needraw',
     ]
 
     __POLLING_TIME = 0.5  # secs
@@ -73,8 +77,15 @@ class RipsCore(Node):
     # just a paranoid double-check. This list should have the same subcriptions
     # than Node._subscriptions.
     _localsubscriptions: List[rclpy.subscription.Subscription]
+    _needmsgs: bool
+    _needraw: bool
 
-    def __init__(self, sock: socket.socket, teesock: socket.socket, coreq: queue.Queue):
+    def __init__(self, sock: socket.socket, teesock: socket.socket, coreq: queue.Queue, nmsg: bool, nraw: bool):
+        assert isinstance(sock, socket.socket)
+        assert teesock == None or isinstance(teesock, socket.socket) 
+        assert isinstance(coreq, queue.Queue)
+        assert isinstance(nmsg, bool)
+        assert isinstance(nraw, bool)
         super().__init__('rips')
         self._socket = sock
         self._teesocket = teesock
@@ -88,6 +99,8 @@ class RipsCore(Node):
         self._whitelist = []
         self._blacklist = ["/rosout"]
         self._localsubscriptions = []
+        self._needmsgs = nmsg
+        self._needraw = nraw
         bl = os.environ.get('RIPSBLACKLIST', '')
         if bl != '':
             self._blacklist = self._blacklist +  bl.split(":")
@@ -96,6 +109,8 @@ class RipsCore(Node):
             self._whitelist= self._whitelist +  wl.split(":")
         self.get_logger().info(f"Blacklist: {self._blacklist}")
         self.get_logger().info(f"Whitelist: {self._whitelist}")
+        self.get_logger().info(f"Become subscriptor: {self._needmsgs}")
+        self.get_logger().info(f"Processing messages' payload: {self._needraw}")
 
     def _send_data(self, m: str):
         assert isinstance(m, str)
@@ -121,15 +136,13 @@ class RipsCore(Node):
         )
         self._send_data(s)
 
-    def _send_msg_event(self, topic: str, msg: str, raw: bytes):
+    def _send_msg_event(self, topic: str, raw: bytes):
         assert isinstance(topic, str)
-        assert isinstance(msg, str)
         assert isinstance(raw, bytes)
-        # possible bug: with message_to_yaml, long String messages
-        # may generate lines too long for YAML (max. line is 80)
-        msg = "  ".join(msg.splitlines(True))
-        rawmsg = base64.encodebytes(raw).decode()
-        rawmsg = "  ".join(rawmsg.splitlines(True))
+        rawmsg = ''
+        if self._needraw:
+            rawmsg = base64.encodebytes(raw).decode()
+            rawmsg = "  ".join(rawmsg.splitlines(True))
         s = (
                 f"---\n"
                 f"currentlevel: {self._currentlevel}\n"
@@ -137,8 +150,8 @@ class RipsCore(Node):
                 f"lastalert: '{self._lastalert}'\n"
                 f"event: message\n"
                 f"fromtopic: {topic}\n"
-                f"msg:\n"
-                f"  {msg}\n"
+                # deprecated
+                f"msg: null\n"
                 f"rawmsg: |\n"
                 f"  {rawmsg}\n"
                 f"{self._customcontext.to_yaml()}"
@@ -148,10 +161,11 @@ class RipsCore(Node):
 
     # double check for paranoids
     def _already_subscribed(self, topic: str) -> bool:
-          for s in self._localsubscriptions:
-              if s.topic_name == topic:
-                  return True
-          return False
+        assert isinstance(topic, str)
+        for s in self._localsubscriptions:
+            if s.topic_name == topic:
+                return True
+        return False
 
     def _subscribe(self, topic: str):
         assert isinstance(topic, str)
@@ -178,14 +192,17 @@ class RipsCore(Node):
             self._blacklist.append(topic)
             return
         def f(binmsg):
-            ## we want both the serialized (binary) msg and the python message
-            try:
-                pymsg = deserialize_message(binmsg, msgtype)
-            except:
-                self.get_logger().warning(f"Handle: can't deserilialize message, type: {msgtype}")
-                return
-            self._update_context()
-            self._send_msg_event(topic, message_to_yaml(pymsg), binmsg)
+            ## We need to save time to receive from high frequency topics such
+            ## as cameras, etc. Now, the context is only updated by polling.
+            ## Note that, now, we can receive a message from a node that is
+            ## not in the context (because it showed up after the last update).
+            ## Anyway, we observed that, in some ros2 configurations (tiago),
+            ## some nodes are not visibles (but the topics are). So, in practice, you
+            ## could receive msgs from nodes that are not in the context. Therefore,
+            ## we can save time here skipping the update.
+            ## self._update_context()
+            self._send_msg_event(topic, binmsg)
+            ## self.get_logger().info(f"processed message, type: {msgtype}")
         subscription = self.create_subscription(
             msgtype,
             topic,
@@ -207,6 +224,8 @@ class RipsCore(Node):
 
     ## two methods to notify system modes: parameter and service
     def _set_level(self, level: str, grav: float):
+        assert isinstance(level, str)
+        assert isinstance(grav, float)
         self._currentlevel = level
         self._currentgrav = grav
         p = self.get_parameter(self.__LEVEL_PARAM_NAME)
@@ -217,6 +236,7 @@ class RipsCore(Node):
         self._invoke_service(level)
 
     def _set_lastalert(self, alert: str):
+        assert isinstance(alert, str)
         self._lastalert = alert
 
     def timer_callback(self):
@@ -253,14 +273,14 @@ class RipsCore(Node):
             self._customcontext.update_topic(elem[0], elem[1], pubs, subs)
             self._customcontext.update_gids(pubs)
             self._customcontext.update_gids(subs)
-            if not self._customcontext.is_subscribed("rips", elem[0]):
+            if self._needmsgs and not self._customcontext.is_subscribed("rips", elem[0]):
                 self._subscribe(elem[0])
         if self._customcontext.check_and_clear():
             self._send_graph_event()
             self.get_logger().info("Context changed")
 
-def from_engine_thread(sock: socket.socket, q: queue.Queue):
-    f = os.fdopen(sock.fileno())
+def read_yaml(f: _io.TextIOWrapper):
+    assert isinstance(f, _io.TextIOWrapper)
     start = False
     s = ""
     for line in f:
@@ -270,35 +290,55 @@ def from_engine_thread(sock: socket.socket, q: queue.Queue):
             start = True
             s = "---\n"
         if line == "...\n":
-            start = False
-            try:
-                d = yaml.safe_load(s)
-                q.put(d)
-            except:
-                print(f"ERROR: sockthread: bad YAML\n{s}\n", file=sys.stderr)
+            s = s + f"{line}"
+            break
+    try:
+        d = yaml.safe_load(s)
+    except:
+        print(f"read_yaml error: bad yaml\n{s}\n", file=sys.stderr)
+        return None
+    return d
 
-def main(args=None):
-    logger = rclpy.logging.get_logger("rips")
-    sockpath = os.environ.get('RIPSSOCKET', "/tmp/rips.socket")
+def from_engine_thread(sock: socket.socket, q: queue.Queue):
+    assert isinstance(sock, socket.socket)
+    assert isinstance(q, queue.Queue)
+    f = os.fdopen(sock.fileno())
+    while True:
+        d = read_yaml(f)
+        if d == None:
+            print(f"engine thread: can't read yaml from socket\n", file=sys.stderr)
+            os._exit(1)
+        q.put(d)
+
+def connect_to_engine(logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> tuple[subprocess.Popen, socket.socket]:
+    assert isinstance(logger, rclpy.impl.rcutils_logger.RcutilsLogger)
     rulespath = os.environ.get('RIPSRULES', '')
     scriptspath = os.environ.get('RIPSSCRIPTS', '')
     if rulespath == '' or scriptspath == '':
         logger.error("RIPSRULES or RIPSCRIPTS environment variables are not defined")
         os._exit(1)
+    sockpath = os.environ.get('RIPSSOCKET', "/tmp/rips.socket")
+    try:
+        os.remove(sockpath)
+    except:
+        pass
     sharepath = get_package_share_directory('ripspy')
     proc = Popen([sharepath+'/bin/rips', "-s", sockpath, scriptspath, rulespath])
-    # Give some time to the engine to start and create the socket. Note that this
-    # is not a trivial issue: (i) the engine needs some time to create the socket;
-    # (ii) the socket may exist from a previous (incorrect) execution; (iii) the engine
-    # can crash while starting (before creating the socket).
-    # The race is worse without this delay (it's not ideal, but it works).
-    # Posible solution: use inotify to watch the path, overkill??
-    # Another one: change the protocol, add a hello message and set an alarm. overkill??
-    # Polling is not necessary, just wait 2 sec and go.
-    sleep(2)
     if proc.poll() != None:
         logger.error("go process not ready, aborting")
         os._exit(1)
+    attempts = 0
+    ready = False
+    # wait for the socket
+    while not ready:
+        ready = os.access(sockpath, os.F_OK)
+        if not ready:
+            attempts += 1
+            if attempts == 4:
+                proc.kill()
+                logger.error("socket path is not ready, aborting")
+                os._exit(1)
+            sleep(0.5)
     logger.info(f"connecting to unix socket {sockpath}")
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -307,12 +347,23 @@ def main(args=None):
         logger.error("can't connect to socket, aborting")
         proc.kill()
         os._exit(1)
+    return proc, sock
 
-    logger.info("connected, creating ripscore thread")
-    ripsq = queue.Queue()
-    sockthread = Thread(target=from_engine_thread, args=[sock, ripsq])
-    sockthread.start()
+def handshake(sock: socket.socket, logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> tuple[bool, bool]:
+    assert isinstance(sock, socket.socket)
+    assert isinstance(logger, rclpy.impl.rcutils_logger.RcutilsLogger)
 
+    return False, False
+
+    f = os.fdopen(sock.fileno())
+    d = read_yaml(f)
+    if d == None or (not "msg" in d or not "raw" in d):
+        logger.error(f"handshake failed: {d}")
+        os._exit(1)
+    return  d.get("msg"), d.get("raw")
+
+def dash(logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> socket.socket:
+    assert isinstance(logger, rclpy.impl.rcutils_logger.RcutilsLogger)
     teesockpath = os.environ.get('RIPSTEESOCKET', "")
     dashsock = None
     if teesockpath != "":
@@ -323,9 +374,19 @@ def main(args=None):
                 logger.error("can't connect to dash socket: " + teesockpath + ", aborting")
                 proc.kill()
                 os._exit(1)
+    return dashsock
 
+def main(args=None):
     rclpy.init(args=args)
-    rips_core = RipsCore(sock, dashsock, ripsq)
+    logger = rclpy.logging.get_logger("rips")
+    proc, sock = connect_to_engine(logger)
+    needmsgs, needraw = handshake(sock, logger)
+    logger.info("connected, creating ripscore thread")
+    ripsq = queue.Queue()
+    sockthread = Thread(target=from_engine_thread, args=[sock, ripsq])
+    sockthread.start()
+    dashsock = dash(logger)
+    rips_core = RipsCore(sock, dashsock, ripsq, needmsgs, needraw)
     logger.info("RIPS core is ready")
     rclpy.spin(rips_core)
     proc.kill()

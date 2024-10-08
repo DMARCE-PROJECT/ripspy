@@ -1,15 +1,15 @@
 ## Copyright (C) 2023  Enrique Soriano <enrique.soriano@urjc.es>
-## 
+##
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 3 of the License, or
 ## (at your option) any later version.
-## 
+##
 ## This program is distributed in the hope that it will be useful,
 ## but WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## GNU General Public License for more details.
-## 
+##
 ## You should have received a copy of the GNU General Public License
 ## along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -17,6 +17,10 @@ from typing import Dict, List, Tuple
 
 import rclpy
 
+# All missing asserts for isinstance are deleted because of
+# this error: Subscripted generics cannot be used with class
+# and instance checks. For example, this one raises the error:
+# assert isinstance(pubs, List[rclpy.node.TopicEndpointInfo])
 
 class RipsTopic:
     """Data of interest for a topic"""
@@ -39,7 +43,7 @@ class RipsTopic:
         self._subscribers = []
         self._publishers = []
         self._parameters = params.copy()
-    
+
     @property
     def name(self) -> str:
         return self._name
@@ -55,8 +59,9 @@ class RipsTopic:
     @property
     def parameters(self) -> List[str]:
         return self._parameters
- 
+
     def update_parameters(self, params: List[str]):
+
         new = params.copy()
         new.sort()
         if new != self._parameters:
@@ -104,8 +109,8 @@ class RipsTopic:
             s = f"{s}        - ~\n"
         else:
             for elem in self._subscribers:
-                s = f"{s}        - {elem}\n"    
-        return s   
+                s = f"{s}        - {elem}\n"
+        return s
 
 class RipsNode:
     """Rips node abstraction"""
@@ -117,13 +122,13 @@ class RipsNode:
     ]
 
     _gids: List[str]
-    _services: Dict[str, List[str]] 
+    _services: Dict[str, List[str]]
 
     def __init__(self, name: str):
         assert isinstance(name, str)
         self._name = name
         self._gids = []
-        self._services = {} 
+        self._services = {}
 
     def add_gid(self, gid: str) -> bool :
         assert isinstance(gid, str)
@@ -169,14 +174,13 @@ class RipsNode:
         s = f"{s}      services:\n"
         if len(self._services) == 0:
             s = f"{s}        - ~\n"
-        else:   
+        else:
             for k, v in self._services.items():
                 s = f"{s}        - service: {k}\n"
                 s = f"{s}          params:\n"
                 for param in v:
                     s = f"{s}            - {param}\n"
         return s
-
 
 class RipsContext:
     """Rips context abstraction"""
@@ -195,7 +199,7 @@ class RipsContext:
         self._topics = []
         self._nodes = []
         self._changed = False
-    
+
     @property
     def topics(self) -> List[RipsTopic]:
         return self._topics;
@@ -209,11 +213,11 @@ class RipsContext:
         for elem in self._nodes:
            if elem.name == name:
                 return elem
-        raise Exception("no such node") 
-          
+        raise Exception("no such node")
+
     def update_nodes(self, nodes: List[str]):
         new = nodes.copy()
-        new.sort() 
+        new.sort()
         current = []
         for elem in self._nodes:
             current.append(elem.name)
@@ -233,7 +237,7 @@ class RipsContext:
                     self._changed = True
             except:
                 pass
-                  
+
     def update_services(self, node: str, l: List[Tuple[str, List[str]]]):
         try:
             n = self.get_node(node)
@@ -242,9 +246,9 @@ class RipsContext:
         except:
             return
 
-    ## topics are never deleted, because RIPS will be subscribed 
+    ## topics are never deleted, because RIPS will be subscribed
     ## forever.
-    def update_topic(self, name: str, 
+    def update_topic(self, name: str,
                     params: List[str],
                     pubs: List[rclpy.node.TopicEndpointInfo],
                     subs: List[rclpy.node.TopicEndpointInfo]):
@@ -282,7 +286,7 @@ class RipsContext:
         for elem in self._topics:
             if topic == elem.name:
                 return elem.parameters
-        raise Exception("No such topic") 
+        raise Exception("No such topic")
 
     def to_yaml(self) -> str:
         s = (
@@ -293,5 +297,5 @@ class RipsContext:
             s = f"{s}{n.to_yaml()}"
         s = f"{s}  topics:\n"
         for t in self._topics:
-            s = f"{s}{t.to_yaml()}" 
+            s = f"{s}{t.to_yaml()}"
         return s

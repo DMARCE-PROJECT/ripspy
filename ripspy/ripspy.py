@@ -196,8 +196,8 @@ class RipsCore(Node):
             ## as cameras, etc. Now, the context is only updated by polling.
             ## Note that, now, we can receive a message from a node that is
             ## not in the context (because it showed up after the last update).
-            ## Anyway, we observed that, in some ros2 configurations (tiago),
-            ## some nodes are not visibles (but the topics are). So, in practice, you
+            ## Anyway, we observed that in some ros2 configurations (tiago),
+            ## some nodes are not visible (but the topics are). So, in practice, you
             ## could receive msgs from nodes that are not in the context. Therefore,
             ## we can save time here skipping the update.
             ## self._update_context()

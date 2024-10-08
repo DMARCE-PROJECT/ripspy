@@ -255,7 +255,7 @@ class RipsCore(Node):
                 self.get_logger().info(f"Rips alert: {alert}")
                 self._set_lastalert(alert)
             else:
-                self.get_logger().error("BAD DICT IN QUEUE")
+                self.get_logger().error("Bad dict from queue")
 
     def _update_context(self):
         nodes = self.get_node_names()

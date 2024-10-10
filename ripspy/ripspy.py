@@ -290,18 +290,17 @@ def read_yaml(f: _io.TextIOWrapper):
     try:
         d = yaml.safe_load(s)
     except:
-        print(f"read_yaml error: bad yaml\n{s}\n", file=sys.stderr)
+        print(f"Read_yaml error: bad yaml\n{s}\n", file=sys.stderr)
         return None
     return d
 
-def from_engine_thread(sock: socket.socket, q: queue.Queue):
-    assert isinstance(sock, socket.socket)
+def from_engine_thread(f: _io.TextIOWrapper, q: queue.Queue):
+    assert isinstance(f, _io.TextIOWrapper)
     assert isinstance(q, queue.Queue)
-    f = os.fdopen(sock.fileno())
     while True:
         d = read_yaml(f)
         if d == None:
-            print(f"engine thread: can't read yaml from socket\n", file=sys.stderr)
+            print(f"Engine thread: can't read yaml from socket\n", file=sys.stderr)
             os._exit(1)
         q.put(d)
 
@@ -318,9 +317,10 @@ def connect_to_engine(logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> tuple[
     except:
         pass
     sharepath = get_package_share_directory('ripspy')
+    ## for debugging: -D, -DD...
     proc = Popen([sharepath+'/bin/rips', "-s", sockpath, scriptspath, rulespath])
     if proc.poll() != None:
-        logger.error("go process not ready, aborting")
+        logger.error("Go process not ready, aborting")
         os._exit(1)
     attempts = 0
     ready = False
@@ -331,26 +331,25 @@ def connect_to_engine(logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> tuple[
             attempts += 1
             if attempts == 4:
                 proc.kill()
-                logger.error("socket path is not ready, aborting")
+                logger.error("Socket path is not ready, aborting")
                 os._exit(1)
             sleep(0.5)
-    logger.info(f"connecting to unix socket {sockpath}")
+    logger.info(f"Connecting to unix socket {sockpath}")
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(sockpath)
     except:
-        logger.error("can't connect to socket, aborting")
+        logger.error("Can't connect to socket, aborting")
         proc.kill()
         os._exit(1)
     return proc, sock
 
-def handshake(sock: socket.socket, logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> tuple[bool, bool]:
-    assert isinstance(sock, socket.socket)
+def handshake(f: _io.TextIOWrapper, logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> tuple[bool, bool]:
+    assert isinstance(f, _io.TextIOWrapper)
     assert isinstance(logger, rclpy.impl.rcutils_logger.RcutilsLogger)
-    f = os.fdopen(sock.fileno())
     d = read_yaml(f)
     if d == None or (not "msg" in d or not "raw" in d):
-        logger.error(f"handshake failed: {d}")
+        logger.error(f"Handshake failed: {d}")
         os._exit(1)
     return  d.get("msg"), d.get("raw")
 
@@ -363,7 +362,7 @@ def dash(logger: rclpy.impl.rcutils_logger.RcutilsLogger) -> socket.socket:
             dashsock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             dashsock.connect(teesockpath)
         except:
-                logger.error("can't connect to dash socket: " + teesockpath + ", aborting")
+                logger.error("Can't connect to dash socket: " + teesockpath + ", aborting")
                 proc.kill()
                 os._exit(1)
     return dashsock
@@ -372,10 +371,16 @@ def main(args=None):
     rclpy.init(args=args)
     logger = rclpy.logging.get_logger("rips")
     proc, sock = connect_to_engine(logger)
-    needmsgs, needraw = handshake(sock, logger)
-    logger.info("connected, creating ripscore thread")
+    try:
+        fsock = os.fdopen(sock.fileno())
+    except:
+        logger.error(f": Can't get the socket's fd\n")
+        proc.kill()
+        os._exit(1)
+    needmsgs, needraw = handshake(fsock, logger)
+    logger.info("Connected, creating ripscore thread")
     ripsq = queue.Queue()
-    sockthread = Thread(target=from_engine_thread, args=[sock, ripsq])
+    sockthread = Thread(target=from_engine_thread, args=[fsock, ripsq])
     sockthread.start()
     dashsock = dash(logger)
     rips_core = RipsCore(sock, dashsock, ripsq, needmsgs, needraw)

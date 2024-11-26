@@ -1,15 +1,15 @@
 ## Copyright (C) 2023  Enrique Soriano <enrique.soriano@urjc.es>
-## 
+##
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 3 of the License, or
 ## (at your option) any later version.
-## 
+##
 ## This program is distributed in the hope that it will be useful,
 ## but WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## GNU General Public License for more details.
-## 
+##
 ## You should have received a copy of the GNU General Public License
 ## along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -34,13 +34,13 @@ from rich.live import Live
 from rich.console import Console
 from rich.text import Text
 
-MaxMsgs = 20
+MaxMsgs = 10 #20
 MaxAlerts = 5
 TheConsole = None
 
 class Header:
     """Ripspy Dash Header"""
-    
+
     __slots__ = [
         '_currentlevel',
         '_currentgrav',
@@ -81,7 +81,7 @@ def make_layout() -> Layout:
     layout.split(
         Layout(name="header", size=4),
         Layout(name="main", ratio=1),
-        Layout(name="footer", size=MaxMsgs+2),
+        Layout(name="footer",  size=MaxMsgs+2),
         Layout(name="footeralerts", size=MaxAlerts+2),
     )
     layout["main"].split_row(Layout(name="box_topics"), Layout(name="box_nodes"))
@@ -105,7 +105,7 @@ def update_nodes(context, layout):
                     added.append(node["node"])
             else:
                 continue
-        else: 
+        else:
             t = tree.add(":black_circle_for_record: " + node["node"])
         #tserv = t.add("Services")
         #for serv in node["services"]:
@@ -118,20 +118,20 @@ def add_nodes_to_topic(nodes, tree):
     added = []
     for n in nodes:
         if n != None:
-            if nodes.count(n) > 1: 
+            if nodes.count(n) > 1:
                 if not n in added:
                     tree.add(":warning: [bold red]" + n + " (dup)")
                     added.append(n)
             else:
                 tree.add(n)
-                            
+
 def update_topics(context, layout):
     tree = Tree("Topics")
     for topic in context["topics"]:
         t = tree.add(":black_circle_for_record: " + topic["topic"])
         tpubs = t.add("Publishers")
         add_nodes_to_topic(topic["publishers"], tpubs)
-        tsubs = t.add("Subscribers") 
+        tsubs = t.add("Subscribers")
         add_nodes_to_topic(topic["subscribers"], tsubs)
     layout["box_topics"].update(Panel(tree, border_style="green"))
 
@@ -141,15 +141,9 @@ def update_msgs(d, layout):
     global last_msgs
     t = d["fromtopic"]
     m = d["msg"]
-    msgdata = ""
-    if "data" in m.keys():
-        msgdata = f"String content: {m['data']}"
-    else:
-        msgdata = f"Base64 content: {d['rawmsg']}".strip()
-    msgdata = "".join(msgdata.splitlines())
     now = datetime.now()
     curtime = now.strftime("%H:%M:%S")
-    line = f"✉ {curtime} msg to topic:{t} {msgdata}"
+    line = f"✉ {curtime} msg to topic: {t}"
     last_msgs = f"{last_msgs}{line}\n"
     l = last_msgs.splitlines()
     if len(l) > MaxMsgs:
@@ -189,13 +183,16 @@ def update(d, layout):
         context = d["context"]
         update_nodes(context, layout)
         update_topics(context, layout)
+    elif d["event"] == "level":
+        update_header(d, layout)
+        return
     update_alerts(d, layout)
     update_header(d, layout)
 
 def mainloop(sock: socket.socket):
     f = os.fdopen(sock.fileno())
     start = False
-    s = "" 
+    s = ""
     layout = make_layout()
     with Live(layout, refresh_per_second=10, screen=True) as live:
         for line in f:
@@ -212,7 +209,7 @@ def mainloop(sock: socket.socket):
                     print(f"ERROR: sockthread: bad YAML\n{s}\n", file=sys.stderr)
                     continue
                 update(d, layout)
-                
+
 def main(args=None):
     global TheConsole
     TheConsole = Console()

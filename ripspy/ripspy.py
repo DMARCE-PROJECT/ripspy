@@ -53,7 +53,7 @@ class RipsCore(Node):
         '_needraw',
     ]
 
-    __POLLING_TIME = 0.5  # secs
+    __POLLING_TIME = 0.5  # secs, other tests: 0.5 and 0.1
     __QUEUE_DEPTH = 100
     __LEVEL_PARAM_NAME = "systemmode"
 
@@ -127,6 +127,16 @@ class RipsCore(Node):
                 f"lastalert: '{self._lastalert}'\n"
                 f"event: graph\n"
                 f"{self._customcontext.to_yaml()}"
+                f"...\n\n"
+        )
+        self._send_data(s)
+
+    def _send_level_only(self):
+        s = (
+                f"---\n"
+                f"currentlevel: {self._currentlevel}\n"
+                f"currentgrav: {self._currentgrav}\n"
+                f"event: level\n"
                 f"...\n\n"
         )
         self._send_data(s)
@@ -215,7 +225,9 @@ class RipsCore(Node):
             return None
         self.req = ChangeMode.Request()
         self.req.mode_name = level
+        self.get_logger().warning('invoking service /safety/change_mode')
         self.cli.call_async(self.req)
+        self.get_logger().warning('service invoked')
 
     ## two methods to notify system modes: parameter and service
     def _set_level(self, level: str, grav: float):
@@ -229,6 +241,8 @@ class RipsCore(Node):
             param = rclpy.Parameter(self.__LEVEL_PARAM_NAME, type, level)
             self.set_parameters([param])
         self._invoke_service(level)
+        self._send_level_only()
+
 
     def _set_lastalert(self, alert: str):
         assert isinstance(alert, str)

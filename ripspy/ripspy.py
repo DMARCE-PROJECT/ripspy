@@ -53,10 +53,11 @@ class RipsCore(Node):
         '_needraw',
     ]
 
-    __POLLING_TIME = 0.5  # secs, other tests: 0.5 and 0.1
+    __DEFAULT_POLLING_TIME = 0.5
     __QUEUE_DEPTH = 100
     __LEVEL_PARAM_NAME = "systemmode"
 
+    _pollingtime = __DEFAULT_POLLING_TIME
     _customcontext: RipsContext
     _socket: socket.socket
     _teesocket: socket.socket
@@ -85,7 +86,7 @@ class RipsCore(Node):
         self._socket = sock
         self._teesocket = teesock
         self._ripscoreq = coreq
-        self.create_timer(self.__POLLING_TIME, self.timer_callback)
+        self.create_timer(self._pollingtime, self.timer_callback)
         self._customcontext = RipsContext()
         self.declare_parameter(self.__LEVEL_PARAM_NAME, "__DEFAULT__")
         self._currentlevel = "init"
@@ -101,7 +102,17 @@ class RipsCore(Node):
             self._blacklist = self._blacklist +  bl.split(":")
         wl = os.environ.get('RIPSWHITELIST', '')
         if wl != '':
-            self._whitelist= self._whitelist +  wl.split(":")
+            self._whitelist = self._whitelist +  wl.split(":")
+        try:
+            polling = os.environ.get('RIPSPOLLING', '')
+            if polling != '':
+                if float(polling) > 0.0 and float(polling) < 10.0:
+                    self._pollingtime = float(polling)
+                else:
+                    self.get_logger().warning(f"RIPSPOLLING must be in (0.0 .. 10.0)")
+        except:
+            self.get_logger().warning(f"RIPSPOLLING variable is not a number")
+        self.get_logger().info(f"Polling: {self._pollingtime}")
         self.get_logger().info(f"Blacklist: {self._blacklist}")
         self.get_logger().info(f"Whitelist: {self._whitelist}")
         self.get_logger().info(f"Become subscriptor: {self._needmsgs}")
